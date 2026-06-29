@@ -1,0 +1,32 @@
+# systemd unit for murmurd. Install to /etc/systemd/system/murmurd.service,
+# create a dedicated unprivileged user, then:
+#   sudo useradd --system --create-home --shell /bin/bash murmur
+#   sudo usermod -aG bluetooth murmur
+#   sudo systemctl enable --now murmurd
+#
+# Pair a phone first (as the murmur user, so the PSK lands in its config dir):
+#   sudo -u murmur murmurd --config-dir /home/murmur/.config/murmur --pair
+
+[Unit]
+Description=murmur BLE remote shell daemon
+After=bluetooth.target
+Requires=bluetooth.target
+
+[Service]
+Type=simple
+User=murmur
+Group=murmur
+# Runs the shell as the murmur user — NOT root. Adjust --shell as needed.
+ExecStart=/usr/local/bin/murmurd --config-dir /home/murmur/.config/murmur --shell /bin/bash
+Restart=on-failure
+RestartSec=2
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/murmur/.config/murmur
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

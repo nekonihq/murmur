@@ -1,0 +1,21 @@
+# Rust
+/daemon/target
+**/*.rs.bk
+
+# Node / React Native
+node_modules/
+/app/ios/Pods
+/app/ios/build
+/app/android/.gradle
+/app/android/build
+/app/android/app/build
+*.log
+.DS_Store
+
+# Env / secrets
+.env
+*.local
+
+# Editor
+.idea/
+.vscode/
