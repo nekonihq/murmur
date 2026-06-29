@@ -131,6 +131,23 @@ test("reassembler handles single-frame messages", () => {
   assert.equal(msg!.opcode, Opcode.Hello);
 });
 
+test("reassembler resyncs after a lost frame (sequence gap)", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const re = new Reassembler();
+  // Message A starts at seq 0 (more fragments to come).
+  re.push({ opcode: Opcode.Data, sessionId: 1, flags: Flags.FRAG_MORE, seq: 0, payload: enc("aa") });
+  // seq 1 is lost; the next frame is the start of a new message at seq 2.
+  // The gap must drop A's partial so it can't corrupt the new message.
+  assert.equal(
+    re.push({ opcode: Opcode.Data, sessionId: 1, flags: Flags.FRAG_MORE, seq: 2, payload: enc("bb") }),
+    null,
+  );
+  const msg = re.push({ opcode: Opcode.Data, sessionId: 1, flags: 0, seq: 3, payload: enc("cc") });
+  assert.ok(msg);
+  // "bbcc" — NOT "aabbcc"; A's stale "aa" was discarded on the gap.
+  assert.equal(new TextDecoder().decode(msg!.payload), "bbcc");
+});
+
 test("header length constant is 8", () => {
   assert.equal(HEADER_LEN, 8);
   assert.equal(PROTO_VERSION, 1);

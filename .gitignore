@@ -1,6 +1,12 @@
-# Rust
-/daemon/target
+# Rust (reference implementation)
+/daemon-rust/target
 **/*.rs.bk
+
+# Python daemon
+__pycache__/
+*.pyc
+/daemon/.venv/
+/daemon/*.egg-info/
 
 # Node / Expo / React Native
 node_modules/

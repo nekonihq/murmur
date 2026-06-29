@@ -1,11 +1,19 @@
-# systemd unit for murmurd. Install to /etc/systemd/system/murmurd.service,
-# create a dedicated unprivileged user, then:
+# systemd unit for the Python murmurd. Install to
+# /etc/systemd/system/murmurd.service.
+#
+# Setup on the Pi (copy the repo to /opt/murmur, then install with uv):
+#   sudo apt install -y bluez python3-dev build-essential libdbus-1-dev pkg-config
 #   sudo useradd --system --create-home --shell /bin/bash murmur
 #   sudo usermod -aG bluetooth murmur
-#   sudo systemctl enable --now murmurd
+#   # as the murmur user, install with uv (creates /opt/murmur/daemon/.venv):
+#   sudo -u murmur sh -c 'cd /opt/murmur/daemon && uv sync'
+#   # (no uv? fall back to: python3 -m venv .venv && .venv/bin/pip install .)
 #
 # Pair a phone first (as the murmur user, so the PSK lands in its config dir):
-#   sudo -u murmur murmurd --config-dir /home/murmur/.config/murmur --pair
+#   sudo -u murmur /opt/murmur/daemon/.venv/bin/murmurd \
+#        --config-dir /home/murmur/.config/murmur --pair
+#
+#   sudo systemctl enable --now murmurd
 
 [Unit]
 Description=murmur BLE remote shell daemon
@@ -17,7 +25,8 @@ Type=simple
 User=murmur
 Group=murmur
 # Runs the shell as the murmur user — NOT root. Adjust --shell as needed.
-ExecStart=/usr/local/bin/murmurd --config-dir /home/murmur/.config/murmur --shell /bin/bash
+# Points at the venv's console script directly, so uv isn't needed at runtime.
+ExecStart=/opt/murmur/daemon/.venv/bin/murmurd --config-dir /home/murmur/.config/murmur --shell /bin/bash
 Restart=on-failure
 RestartSec=2
 

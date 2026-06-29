@@ -5,7 +5,8 @@ required on the Pi. The Pi can be fully offline and headless; your phone is the 
 
 Two halves:
 
-- **`murmurd`** — a Rust daemon on the Pi that exposes a shell over a custom BLE GATT service.
+- **`murmurd`** — a Python daemon on the Pi that exposes a shell over a custom BLE GATT
+  service (no compilation needed; a Rust reference implementation is kept in `daemon-rust/`).
 - **murmur app** — a React Native app (iOS + Android) that connects over BLE and runs in two
   modes:
   - **Shell mode** — a real interactive terminal (xterm.js).
@@ -27,27 +28,31 @@ framing + flow-control protocol on top of GATT — see [`PROTOCOL.md`](./PROTOCO
 ## Layout
 
 ```
-daemon/   Rust daemon (murmurd) — runs on the Pi
-app/      React Native app (iOS + Android)
-docs/     PLAN.md and design notes
-PROTOCOL.md   the wire protocol — single source of truth for both sides
+daemon/        Python daemon (murmurd) — runs on the Pi
+daemon-rust/   Rust reference implementation (cross-compile if you prefer it)
+app/           React Native / Expo app (iOS + Android)
+docs/          PLAN.md and design notes
+PROTOCOL.md    the wire protocol — single source of truth for all sides
 ```
 
 ## Status
 
 Early development. See [`docs/PLAN.md`](./docs/PLAN.md) for the design and build order.
 
-### Building the daemon
+### The daemon
 
-`murmurd` targets **Linux/BlueZ** (the BLE peripheral layer uses `bluer`, which is
-Linux-only). The protocol and session logic are platform-independent and unit-tested on any
-host:
+`murmurd` (Python) targets **Linux/BlueZ** (the BLE peripheral uses `bless`). The protocol,
+auth, flow-control, exec, and config logic are platform-independent and unit-tested on any
+host with the standard library — no pip install needed:
 
 ```sh
 cd daemon
-cargo test          # protocol round-trip + flow-control tests (any OS)
-cargo build         # full build incl. BLE — Linux only
+python3 -m unittest discover -s tests -t .   # protocol/auth/flow-control/exec tests (any OS)
 ```
+
+Install on the Pi with a venv (no compilation) — see [`daemon/README.md`](./daemon/README.md).
+A Rust implementation is preserved in `daemon-rust/` (`cargo test`) if you'd rather
+cross-compile a single binary.
 
 ### App
 

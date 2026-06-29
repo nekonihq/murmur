@@ -1,0 +1,18 @@
+[project]
+name = "murmurd"
+version = "0.1.0"
+description = "murmur daemon — BLE remote shell + agent backend for Raspberry Pi"
+requires-python = ">=3.9"
+dependencies = [
+    "bless>=0.2.6",
+]
+
+[project.scripts]
+murmurd = "murmurd.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["murmurd"]

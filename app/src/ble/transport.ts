@@ -5,6 +5,7 @@
 import { BleManager, Device, type Subscription } from "react-native-ble-plx";
 
 import { toBase64, fromBase64 } from "../crypto/base64.ts";
+import { log } from "../log.ts";
 
 export const SERVICE_UUID = "6d75726d-0000-4000-8000-000000000001";
 export const C2P_UUID = "6d75726d-0000-4000-8000-000000000002";
@@ -33,6 +34,12 @@ export class BleTransport {
   private subs: Subscription[] = [];
   private mtu = DEFAULT_MTU;
   private onBytes: ((chan: NotifyChannel, bytes: Uint8Array) => void) | null = null;
+  private onDisc: ((reason: Error | null) => void) | null = null;
+
+  /** Register a callback fired when the peripheral disconnects. */
+  onDisconnected(cb: (reason: Error | null) => void): void {
+    this.onDisc = cb;
+  }
 
   /** Scan for murmur peripherals, invoking `onFound` for each unique device. */
   scan(onFound: (d: DiscoveredDevice) => void, onError: (e: Error) => void): () => void {
@@ -61,6 +68,20 @@ export class BleTransport {
     this.mtu = Math.max(DEFAULT_MTU, (device.mtu ?? DEFAULT_MTU) - 3);
     await device.discoverAllServicesAndCharacteristics();
     this.device = device;
+    log("ble", "connected", device.id, "mtu", device.mtu, "-> working", this.mtu);
+    // Surface link drops instead of letting later operations throw uncaught.
+    this.subs.push(
+      device.onDisconnected((error, dev) => {
+        const e = error as { errorCode?: number; reason?: string | null; message?: string } | null;
+        log("ble", "DISCONNECTED", dev?.id, {
+          errorCode: e?.errorCode,
+          reason: e?.reason,
+          message: e?.message,
+        });
+        this.device = null;
+        this.onDisc?.(error ? new Error(error.message ?? "disconnected") : null);
+      }),
+    );
   }
 
   /** Register the inbound-bytes handler and subscribe to P2C + CTRL notifies. */
@@ -87,13 +108,11 @@ export class BleTransport {
     if (!this.device) throw new Error("not connected");
     const uuid = chan === "c2p" ? C2P_UUID : CTRL_UUID;
     const b64 = toBase64(bytes);
-    // Write-without-response on C2P for throughput; CTRL uses with-response so
-    // the auth handshake is reliable.
-    if (chan === "c2p") {
-      await this.device.writeCharacteristicWithoutResponseForService(SERVICE_UUID, uuid, b64);
-    } else {
-      await this.device.writeCharacteristicWithResponseForService(SERVICE_UUID, uuid, b64);
-    }
+    // Use write-with-response on both characteristics. bless (the Pi-side GATT
+    // server) does not implement BlueZ's AcquireWrite socket, so
+    // write-without-response is silently dropped — with-response goes through
+    // BlueZ WriteValue and reliably reaches the daemon's write callback.
+    await this.device.writeCharacteristicWithResponseForService(SERVICE_UUID, uuid, b64);
   }
 
   async disconnect(): Promise<void> {

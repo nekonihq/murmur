@@ -150,8 +150,18 @@ export interface Message {
  */
 export class Reassembler {
   private partial = new Map<string, number[]>();
+  private lastSeq: number | null = null;
 
   push(frame: Frame): Message | null {
+    // Frames on one characteristic carry a contiguous per-direction sequence.
+    // A gap means a frame was lost (BLE notifications are unacknowledged), so
+    // drop any in-progress reassembly to resync — otherwise a lost fragment
+    // corrupts every subsequent message sharing its (session, opcode) key.
+    if (this.lastSeq !== null && frame.seq !== (this.lastSeq + 1) % 0x10000) {
+      this.partial.clear();
+    }
+    this.lastSeq = frame.seq;
+
     const key = `${frame.sessionId}:${frame.opcode}`;
     if (hasMore(frame)) {
       const buf = this.partial.get(key) ?? [];

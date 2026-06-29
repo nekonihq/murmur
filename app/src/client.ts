@@ -3,11 +3,13 @@
 // shell screen and the agent loop talk to this, not to BLE directly.
 
 import { BleTransport, type NotifyChannel } from "./ble/transport.ts";
+import { log } from "./log.ts";
 import { hmacSha256 } from "./crypto/hmac.ts";
 import { toBase64, fromBase64 } from "./crypto/base64.ts";
 import {
   Opcode,
   Flags,
+  CONNECTION_SESSION,
   Reassembler,
   decodeFrame,
   encodeFrame,
@@ -39,7 +41,36 @@ const CREDIT_REFILL_AT = 16;
 
 const PROTO_VERSION = 1;
 
+/** Fail the connect attempt if the handshake doesn't complete in time. */
+const HANDSHAKE_TIMEOUT_MS = 15000;
+
+/** Keep the BLE link from going fully idle (which drops it after ~10s). */
+const KEEPALIVE_MS = 4000;
+
 type Pending<T> = { resolve: (v: T) => void; reject: (e: Error) => void };
+
+/** Reject `p` if it hasn't settled within `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Log a rejected fire-and-forget BLE write (e.g. after a disconnect) without
+ *  turning it into an uncaught promise rejection. */
+function swallow(e: unknown): void {
+  console.warn("murmur: BLE write failed:", e);
+}
 
 export class MurmurClient {
   private transport = new BleTransport();
@@ -59,9 +90,17 @@ export class MurmurClient {
   private received = new Map<number, number>();
 
   private execSessionReady = false;
+  private onDiscCb: ((reason: Error) => void) | null = null;
+  private keepAlive: ReturnType<typeof setInterval> | null = null;
+  private openSessions = new Set<number>();
 
   constructor(psk: Uint8Array) {
     this.psk = psk;
+  }
+
+  /** Notified when the link drops (after internal pending promises are failed). */
+  onDisconnected(cb: (reason: Error) => void): void {
+    this.onDiscCb = cb;
   }
 
   get transportRef(): BleTransport {
@@ -70,17 +109,73 @@ export class MurmurClient {
 
   /** Connect to a device and complete the auth handshake. */
   async connect(deviceId: string): Promise<void> {
+    log("client", "connect start", deviceId);
     await this.transport.connect(deviceId);
+    // A link drop (common when the peripheral isn't really serving GATT) must
+    // reject anything in flight rather than hang or throw uncaught later.
+    this.transport.onDisconnected((reason) => {
+      const err = reason ?? new Error("peripheral disconnected");
+      this.failAll(err);
+      this.onDiscCb?.(err);
+    });
     this.transport.listen((chan, bytes) => this.onBytes(chan, bytes));
     const authed = new Promise<void>((resolve, reject) => {
       this.authPending = { resolve, reject };
     });
     const hello: Hello = { proto: PROTO_VERSION, client: "murmur-app/0.1" };
     await this.sendCtrl(Opcode.Hello, 0, jsonPayload(hello));
-    await authed;
+    await withTimeout(
+      authed,
+      HANDSHAKE_TIMEOUT_MS,
+      "handshake timed out — is murmurd running and advertising on the Pi?",
+    );
+    log("client", "authenticated");
+    this.startKeepAlive();
+  }
+
+  private startKeepAlive(): void {
+    this.stopKeepAlive();
+    // A zero-credit CREDIT is a no-op for the daemon but keeps BLE traffic
+    // flowing so the link isn't torn down for being idle.
+    this.keepAlive = setInterval(() => {
+      log("ka", "tick");
+      if (this.openSessions.size === 0) {
+        // No session yet — a zero-credit grant just keeps the link warm.
+        this.grant(CONNECTION_SESSION, 0).catch(swallow);
+      } else {
+        // Top up each session's credits. This is the safety net that breaks a
+        // credit deadlock caused by lost notifications (the daemon caps the
+        // total, so this can't over-grant).
+        for (const id of this.openSessions) {
+          this.grant(id, CREDIT_WINDOW).catch(swallow);
+        }
+      }
+    }, KEEPALIVE_MS);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAlive) {
+      clearInterval(this.keepAlive);
+      this.keepAlive = null;
+    }
+  }
+
+  /** Reject every pending promise (used on disconnect / fatal error). */
+  private failAll(error: Error): void {
+    log("client", "failAll:", error.message);
+    this.stopKeepAlive();
+    this.openSessions.clear();
+    this.execSessionReady = false;
+    this.authPending?.reject(error);
+    this.authPending = null;
+    for (const p of this.openPending.values()) p.reject(error);
+    this.openPending.clear();
+    for (const p of this.execPending.values()) p.reject(error);
+    this.execPending.clear();
   }
 
   async disconnect(): Promise<void> {
+    this.stopKeepAlive();
     await this.transport.disconnect();
   }
 
@@ -97,15 +192,15 @@ export class MurmurClient {
   }
 
   sendStdin(bytes: Uint8Array): void {
-    void this.sendC2p(Opcode.Data, SHELL_SESSION, bytes);
+    this.sendC2p(Opcode.Data, SHELL_SESSION, bytes).catch(swallow);
   }
 
   resize(cols: number, rows: number): void {
-    void this.sendC2p(Opcode.Resize, SHELL_SESSION, jsonPayload({ cols, rows }));
+    this.sendC2p(Opcode.Resize, SHELL_SESSION, jsonPayload({ cols, rows })).catch(swallow);
   }
 
   signal(sig: SignalName): void {
-    void this.sendC2p(Opcode.Signal, SHELL_SESSION, jsonPayload(sig));
+    this.sendC2p(Opcode.Signal, SHELL_SESSION, jsonPayload(sig)).catch(swallow);
   }
 
   // ---- Agent mode -------------------------------------------------------
@@ -141,6 +236,7 @@ export class MurmurClient {
     const open: OpenSession = { session_id: id, mode, cols, rows };
     await this.sendC2p(Opcode.OpenSession, id, jsonPayload(open));
     await opened;
+    this.openSessions.add(id);
     await this.grant(id, CREDIT_WINDOW);
     this.granted.set(id, CREDIT_WINDOW);
     this.received.set(id, 0);
@@ -159,7 +255,7 @@ export class MurmurClient {
     if (remaining <= CREDIT_REFILL_AT) {
       const top = CREDIT_WINDOW - remaining;
       this.granted.set(sessionId, granted + top);
-      void this.grant(sessionId, top);
+      this.grant(sessionId, top).catch(swallow);
     }
   }
 
@@ -229,6 +325,7 @@ export class MurmurClient {
       }
       case Opcode.CloseSession: {
         this.dataHandlers.delete(msg.sessionId);
+        this.openSessions.delete(msg.sessionId);
         break;
       }
       case Opcode.Error: {

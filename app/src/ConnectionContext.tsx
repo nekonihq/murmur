@@ -8,6 +8,7 @@ import { MurmurClient } from "./client.ts";
 import { createProvider } from "./providers/index.ts";
 import type { LLMProvider } from "./agent/types.ts";
 import { loadPsk, loadProvider, loadSelectedProvider } from "./storage/keys.ts";
+import { log } from "./log.ts";
 
 interface ConnectionValue {
   client: MurmurClient | null;
@@ -32,6 +33,12 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   const connectWithPsk = useCallback(async (id: string, psk: Uint8Array) => {
     const c = new MurmurClient(psk);
     await c.connect(id);
+    // Drop back to the device list if the link dies, instead of failing writes silently.
+    c.onDisconnected((reason) => {
+      log("ctx", "client disconnected -> device list:", reason.message);
+      setClient(null);
+      setDeviceId(null);
+    });
     setClient(c);
     setDeviceId(id);
   }, []);

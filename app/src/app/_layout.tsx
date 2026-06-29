@@ -4,6 +4,11 @@ import { StatusBar } from "expo-status-bar";
 
 import { ConnectionProvider } from "../ConnectionContext.tsx";
 import { colors } from "../theme.ts";
+import { log } from "../log.ts";
+
+// Logs once per bundle evaluation. If this reappears during a live session, the
+// app is reloading (Metro/dev-client), which would drop the BLE link.
+log("boot", "app bundle evaluated");
 
 export default function RootLayout() {
   return (

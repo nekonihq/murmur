@@ -22,10 +22,12 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMid,
+        tabBarHideOnKeyboard: true,
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen name="shell" options={{ title: "Shell" }} />
+      {/* The terminal owns the full screen; no nav header to overlap it. */}
+      <Tabs.Screen name="shell" options={{ title: "Shell", headerShown: false }} />
       <Tabs.Screen name="agent" options={{ title: "Agent" }} />
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
     </Tabs>
