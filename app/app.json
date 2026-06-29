@@ -1,4 +1,45 @@
 {
-  "name": "murmur",
-  "displayName": "murmur"
+  "expo": {
+    "name": "murmur",
+    "slug": "murmur",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "murmur",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nekoni.murmur",
+      "appleTeamId": "5937UUXFCY"
+    },
+    "android": {
+      "package": "com.nekoni.murmur",
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN"
+      ]
+    },
+    "runtimeVersion": "1.0.0",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "murmur uses Bluetooth to connect to your Raspberry Pi."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {}
+    }
+  }
 }
