@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Full-bleed app icon (the OS applies the rounded mask). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111826"/>
+      <stop offset="1" stop-color="#0a0e15"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+  <g transform="translate(-28,0)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M556.4,397.1 A150,150 0 0 1 556.4,626.9" stroke="#3b82f6" stroke-width="44" opacity="1"/>
+    <path d="M606.6,337.4 A228,228 0 0 1 606.6,686.6" stroke="#3b82f6" stroke-width="44" opacity="0.62"/>
+    <path d="M656.8,277.6 A306,306 0 0 1 656.8,746.4" stroke="#3b82f6" stroke-width="44" opacity="0.34"/>
+    <polyline points="330,388 460,512 330,636" stroke="#eaf1fb" stroke-width="78"/>
+  </g>
+</svg>
