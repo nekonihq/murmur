@@ -2,8 +2,9 @@
 
 Version: `1` (`PROTO_VERSION`).
 
-This is the single source of truth. Both `daemon/src/protocol` (Rust) and
-`app/src/protocol` (TypeScript) implement exactly what is described here. Keep them in sync.
+This is the single source of truth. Both the Python daemon (`daemon/murmurd/protocol.py`) and
+the app (`app/src/protocol`, TypeScript) implement exactly what is described here. Keep them in
+sync.
 
 BLE is a low-bandwidth, MTU-bounded transport whose notifications can be silently dropped
 under load. This protocol therefore handles its own **framing**, **fragmentation**,
@@ -71,7 +72,7 @@ payload) until negotiated, expect 180–512 in practice.
 | `DATA`            | 0x12  | both  | **raw bytes** (stdin on C2P, stdout/stderr on P2C). On P2C, `flags` bit 1 `STREAM_ERR` marks stderr. |
 | `RESIZE`          | 0x13  | C2P   | `{ "cols": C, "rows": R }` (pty only) |
 | `SIGNAL`          | 0x14  | C2P   | `{ "sig": "INT"\|"TERM"\|"HUP" }` (pty only) |
-| `EXEC`            | 0x15  | C2P   | `{ "cmd": "<string>", "timeout_ms": T? }` (exec only) |
+| `EXEC`            | 0x15  | C2P   | `{ "cmd": "<string>", "timeout_ms": T?, "sudo_password": "<string>"? }` (exec only) |
 | `EXEC_RESULT`     | 0x16  | P2C   | `{ "stdout": "<utf8>", "stderr": "<utf8>", "exit_code": E, "truncated": bool }` |
 | `CLOSE_SESSION`   | 0x17  | both  | `{ "session_id": N }` |
 | `CREDIT`          | 0x20  | CTRL  | `{ "session_id": N, "n": <u16> }` |
@@ -80,6 +81,12 @@ payload) until negotiated, expect 180–512 in practice.
 `DATA` payload is raw bytes (not JSON) for efficiency and binary-safety on the byte stream.
 All other payloads are compact UTF-8 JSON. `EXEC_RESULT` carries shell output as UTF-8
 strings (lossy for non-UTF-8 bytes — acceptable for the agent's command results).
+
+`EXEC` commands run in a new session with no controlling terminal, so an interactive
+`sudo` can't prompt on the Pi's console. When `sudo_password` is present the daemon exposes
+it to sudo through an askpass helper (the secret stays in the child's environment, never on
+disk); when absent, a password-requiring sudo fails fast instead of hanging. The central
+sends `sudo_password` only for commands that invoke sudo.
 
 ## Connection lifecycle
 
@@ -115,12 +122,10 @@ single connection, distinguished by `session_id`.
 
 ### Pairing (one-time)
 
-The daemon generates a random 256-bit `psk` on first run. To enroll a phone, the user puts
-the daemon in pairing mode (`murmurd --pair`), which prints a short human-facing 6-digit code
-**and** exposes the `psk` for transfer only while a freshly-bonded central completes pairing.
-The 6-digit code authorizes the transfer; the phone stores the `psk` in Keychain/Keystore.
-Thereafter the runtime challenge/response above uses the `psk`. (MVP may simplify enrollment;
-the runtime handshake is the stable contract.)
+The daemon generates a random 256-bit `psk` on first run. To enroll a phone, run the daemon in
+pairing mode (`murmurd --pair`), which prints the `psk` as a base64 string. The user pastes it
+into the app's pairing screen once; the phone stores it in the OS secure store
+(Keychain/Keystore). Thereafter every connection uses the runtime challenge/response above.
 
 ## Flow control (credit window)
 

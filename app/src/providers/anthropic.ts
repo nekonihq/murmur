@@ -43,7 +43,7 @@ export class AnthropicProvider implements LLMProvider {
     this.model = config.model ?? DEFAULT_MODELS.anthropic;
   }
 
-  async next(systemPrompt: string, turns: Turn[]): Promise<ProviderTurn> {
+  async next(systemPrompt: string, turns: Turn[], signal?: AbortSignal): Promise<ProviderTurn> {
     const body = {
       model: this.model,
       max_tokens: MAX_TOKENS,
@@ -65,6 +65,7 @@ export class AnthropicProvider implements LLMProvider {
         "anthropic-version": API_VERSION,
       },
       body,
+      signal,
     )) as { content?: AnthropicBlock[]; stop_reason?: string };
 
     let text = "";
@@ -99,6 +100,8 @@ function toAnthropicMessage(turn: Turn): unknown {
           },
         });
       }
+      // A message must have at least one content block.
+      if (content.length === 0) content.push({ type: "text", text: "(no content)" });
       return { role: "assistant", content };
     }
     case "tool":

@@ -4,14 +4,13 @@ The murmur daemon. Exposes an interactive shell and a one-shot command runner ov
 BLE GATT service. The AI agent loop lives on the phone; this daemon only executes what the
 phone sends.
 
-Python was chosen over the original Rust implementation (kept in `../daemon-rust/` for
-reference) so the Pi needs **no compilation** — just BlueZ and a venv.
+Python was chosen so the Pi needs **no compilation** — just BlueZ and a venv.
 
 ## Layout
 
 ```
 murmurd/
-  protocol.py   wire protocol — byte-compatible with app/src/protocol and daemon-rust
+  protocol.py   wire protocol — byte-compatible with app/src/protocol
   messages*     (payloads are plain JSON dicts; see PROTOCOL.md)
   auth.py       HMAC-SHA256 challenge/response over a pre-shared key
   conn.py       auth handshake + credit-based outbound flow-control pump
@@ -34,9 +33,9 @@ python3 -m unittest discover -s tests -t .
 ```
 
 The tests need no dependencies, so plain `python3` works without installing anything. These
-include a golden frame vector that must match the Rust daemon and the TypeScript app,
-and RFC 4231 HMAC vectors that guarantee the auth response matches what the app sends. The
-`ble.py` layer is integration glue that requires a real BlueZ adapter to validate.
+include a golden frame vector that must match the TypeScript app, and RFC 4231 HMAC vectors
+that guarantee the auth response matches what the app sends. The `ble.py` layer is integration
+glue that requires a real BlueZ adapter to validate.
 
 ## Dependencies & lockfile
 

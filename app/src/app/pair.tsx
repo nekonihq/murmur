@@ -1,18 +1,21 @@
 // Pairing route: paste the base64 key printed by `murmurd --pair`, store it,
 // and connect.
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { useConnection } from "../ConnectionContext.tsx";
+import { useTheme } from "../ThemeContext.tsx";
 import { savePsk, loadPsk } from "../storage/keys.ts";
-import { colors } from "../theme.ts";
+import type { ThemeColors } from "../theme.ts";
 
 export default function PairRoute() {
   const router = useRouter();
   const { deviceId, name } = useLocalSearchParams<{ deviceId: string; name?: string }>();
   const { connectWithPsk } = useConnection();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [psk, setPsk] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -54,19 +57,21 @@ export default function PairRoute() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, gap: 12 },
-  title: { fontSize: 18, fontWeight: "600", color: colors.textHigh },
-  body: { color: colors.textMid },
-  mono: { fontFamily: "monospace", color: colors.textHigh },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 10,
-    color: colors.textHigh,
-  },
-  button: { backgroundColor: colors.accent, padding: 12, borderRadius: 8 },
-  buttonText: { color: "#fff", textAlign: "center" },
-  error: { color: colors.danger },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg, padding: 20, gap: 12 },
+    title: { fontSize: 18, fontWeight: "600", color: colors.textHigh },
+    body: { color: colors.textMid },
+    mono: { fontFamily: "monospace", color: colors.textHigh },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 10,
+      color: colors.textHigh,
+      backgroundColor: colors.surface,
+    },
+    button: { backgroundColor: colors.accent, padding: 12, borderRadius: 8 },
+    buttonText: { color: colors.accentText, textAlign: "center" },
+    error: { color: colors.danger },
+  });

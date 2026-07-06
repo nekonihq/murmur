@@ -39,7 +39,8 @@ export interface ProviderTurn {
 export interface LLMProvider {
   readonly name: string;
   readonly model: string;
-  next(systemPrompt: string, turns: Turn[]): Promise<ProviderTurn>;
+  /** `signal` aborts the underlying request so the run can be stopped mid-call. */
+  next(systemPrompt: string, turns: Turn[], signal?: AbortSignal): Promise<ProviderTurn>;
 }
 
 /** Events emitted by the agent loop for the UI to render. */
@@ -49,6 +50,7 @@ export type AgentEvent =
   | { type: "command_denied"; id: string; command: string }
   | { type: "result"; id: string; result: ExecResult }
   | { type: "done" }
+  | { type: "stopped" }
   | { type: "error"; message: string };
 
 /** The single tool exposed to every provider. */

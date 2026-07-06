@@ -1,7 +1,3 @@
-# Rust (reference implementation)
-/daemon-rust/target
-**/*.rs.bk
-
 # Python daemon
 __pycache__/
 *.pyc

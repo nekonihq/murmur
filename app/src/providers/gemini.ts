@@ -30,7 +30,7 @@ export class GeminiProvider implements LLMProvider {
     this.model = config.model ?? DEFAULT_MODELS.gemini;
   }
 
-  async next(systemPrompt: string, turns: Turn[]): Promise<ProviderTurn> {
+  async next(systemPrompt: string, turns: Turn[], signal?: AbortSignal): Promise<ProviderTurn> {
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
     const body = {
@@ -49,7 +49,7 @@ export class GeminiProvider implements LLMProvider {
       ],
     };
 
-    const res = (await postJson(url, { "x-goog-api-key": this.apiKey }, body)) as {
+    const res = (await postJson(url, { "x-goog-api-key": this.apiKey }, body, signal)) as {
       candidates?: { content?: { parts?: GeminiPart[] } }[];
     };
 
@@ -88,6 +88,8 @@ function toGeminiContent(turn: Turn): unknown {
           },
         });
       }
+      // A content entry must have at least one part.
+      if (parts.length === 0) parts.push({ text: "(no content)" });
       return { role: "model", parts };
     }
     case "tool":

@@ -1,8 +1,8 @@
 # murmur app
 
-**Expo (SDK 55) + expo-router + EAS** client for murmur — same build/publish stack as the
-nekoni mobile app. Connects to `murmurd` over BLE and offers a **Shell** tab (interactive
-terminal) and an **Agent** tab (LLM drives the shell with your own API key).
+**Expo (SDK 55) + expo-router + EAS** client for murmur. Connects to `murmurd` over BLE and
+offers a **Shell** tab (interactive terminal) and an **Agent** tab (LLM drives the shell with
+your own API key).
 
 ## Source layout
 
@@ -15,7 +15,7 @@ src/
                   (tabs)/_layout.tsx Shell / Agent / Settings tabs
                   (tabs)/{shell,agent,settings}.tsx
   ConnectionContext.tsx   active MurmurClient + provider, shared across tabs
-  protocol/     wire protocol mirror of daemon/src/protocol (frame.ts, messages.ts)
+  protocol/     TypeScript mirror of PROTOCOL.md (frame.ts, messages.ts)
   crypto/       sha256 + hmac (auth) + base64 — dependency-free, RFC-vector tested
   ble/          react-native-ble-plx transport (transport.ts)
   client.ts     connection + auth handshake + sessions + flow-control credits
@@ -24,7 +24,7 @@ src/
   storage/      expo-secure-store for the BLE PSK and BYO API keys
   terminal/     xterm.js-in-WebView terminal
   screens/      presentational Shell / Agent / Settings (consumed by routes)
-  theme.ts      dark palette
+  theme.ts      light + dark palettes (system default, user-overridable)
 ```
 
 ## Tests
@@ -36,7 +36,7 @@ support — no build step:
 npm test     # node --test "src/**/*.test.ts"
 ```
 
-These include a golden frame vector that must match the Rust daemon's encoding, and RFC 4231
+These include a golden frame vector that must match the daemon's encoding, and RFC 4231
 HMAC vectors that guarantee the auth response matches what the daemon verifies.
 
 ## Run locally on an iPhone

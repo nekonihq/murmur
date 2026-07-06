@@ -53,8 +53,94 @@ def _cap(data: bytes) -> tuple[str, bool]:
     return data.decode("utf-8", "replace"), False
 
 
-async def run_exec(cmd: str, timeout_ms: int | None) -> dict:
-    """Run ``cmd`` via /bin/sh -c, optionally bounded by ``timeout_ms``."""
+_askpass_path: str | None = None
+_sudo_shim_dir: str | None = None
+
+
+def _kill_group(proc) -> None:
+    """SIGKILL the command's whole process group (it's a session leader via
+    ``start_new_session``), so children die too — not just the top ``/bin/sh``.
+    Root-owned children spawned by sudo may survive if the daemon isn't root."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signalmod.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+
+
+def _askpass_helper() -> str:
+    """Path to a cached askpass helper that echoes ``$MURMUR_SUDO_PASS``.
+
+    The password lives only in the child process's environment; the helper
+    script on disk contains no secret. sudo invokes it (via ``sudo -A``, forced
+    by the shim below) to read the password without a terminal.
+    """
+    global _askpass_path
+    if _askpass_path and os.path.exists(_askpass_path):
+        return _askpass_path
+    import stat
+    import tempfile
+
+    fd, path = tempfile.mkstemp(prefix="murmur-askpass-")
+    with os.fdopen(fd, "w") as f:
+        f.write('#!/bin/sh\nprintf \'%s\\n\' "$MURMUR_SUDO_PASS"\n')
+    os.chmod(path, stat.S_IRWXU)  # 0700: only the daemon user may read/run it
+    _askpass_path = path
+    return path
+
+
+def _sudo_shim_bindir() -> str | None:
+    """Directory holding a ``sudo`` shim that re-execs the real sudo with ``-A``.
+
+    Prepended to the command's PATH so any bare ``sudo`` becomes ``sudo -A`` and
+    reads the password from our askpass helper. This is needed because many sudo
+    builds (Raspberry Pi OS among them) only consult ``SUDO_ASKPASS`` when ``-A``
+    is given — without it they demand a terminal and fail. Returns None if sudo
+    isn't installed.
+    """
+    global _sudo_shim_dir
+    if _sudo_shim_dir and os.path.exists(_sudo_shim_dir):
+        return _sudo_shim_dir
+    import shlex
+    import shutil
+    import stat
+    import tempfile
+
+    # Resolve using the daemon's own PATH (no shim on it), so there's no
+    # recursion when the shim execs the real sudo.
+    real = shutil.which("sudo")
+    if not real:
+        return None
+    d = tempfile.mkdtemp(prefix="murmur-sudo-")
+    shim = os.path.join(d, "sudo")
+    with open(shim, "w") as f:
+        f.write(f'#!/bin/sh\nexec {shlex.quote(real)} -A "$@"\n')
+    os.chmod(shim, stat.S_IRWXU)
+    _sudo_shim_dir = d
+    return d
+
+
+async def run_exec(cmd: str, timeout_ms: int | None, sudo_password: str | None = None) -> dict:
+    """Run ``cmd`` via /bin/sh -c, optionally bounded by ``timeout_ms``.
+
+    Runs in a new session (no controlling terminal) so an interactive ``sudo``
+    can never grab the daemon's tty and prompt on the Pi's console. When
+    ``sudo_password`` is supplied, a PATH shim forces ``sudo -A`` and an askpass
+    helper feeds it the password; without one, a password-requiring sudo fails
+    fast with sudo's own error rather than hanging.
+    """
+    env = None
+    if sudo_password:
+        env = {
+            **os.environ,
+            "SUDO_ASKPASS": _askpass_helper(),
+            "MURMUR_SUDO_PASS": sudo_password,
+        }
+        bindir = _sudo_shim_bindir()
+        if bindir:
+            env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
     try:
         proc = await asyncio.create_subprocess_exec(
             "/bin/sh",
@@ -63,6 +149,8 @@ async def run_exec(cmd: str, timeout_ms: int | None) -> dict:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
+            env=env,
         )
     except OSError as e:
         return {"stdout": "", "stderr": f"failed to spawn command: {e}",
@@ -76,10 +164,16 @@ async def run_exec(cmd: str, timeout_ms: int | None) -> dict:
         else:
             stdout, stderr = await proc.communicate()
     except asyncio.TimeoutError:
-        proc.kill()
+        _kill_group(proc)
         await proc.wait()
         return {"stdout": "", "stderr": f"command timed out after {timeout_ms} ms",
                 "exit_code": TIMEOUT_EXIT, "truncated": False}
+    except asyncio.CancelledError:
+        # The central sent CLOSE_SESSION (Stop). Kill the whole process group so
+        # the command and its children die, then propagate the cancellation.
+        _kill_group(proc)
+        await proc.wait()
+        raise
 
     out, t1 = _cap(stdout)
     err, t2 = _cap(stderr)
@@ -196,6 +290,7 @@ class SessionManager:
         self._shell = shell
         self._loop = asyncio.get_event_loop()
         self._ptys: dict[int, PtySession] = {}
+        self._execs: dict[int, "asyncio.Task"] = {}
 
     def _emit(self, event: OutEvent) -> None:
         self._queue.put_nowait(event)
@@ -263,20 +358,38 @@ class SessionManager:
         req = json.loads(payload)
         cmd = req["cmd"]
         timeout_ms = req.get("timeout_ms")
+        sudo_password = req.get("sudo_password")
 
         async def _run() -> None:
-            result = await run_exec(cmd, timeout_ms)
+            try:
+                result = await run_exec(cmd, timeout_ms, sudo_password)
+            except asyncio.CancelledError:
+                return  # Stop: command was killed, drop the (never-sent) result
+            finally:
+                self._execs.pop(session_id, None)
             self._emit(OutEvent.json(session_id, Opcode.EXEC_RESULT, result))
 
-        asyncio.ensure_future(_run())
+        # A prior exec on this session shouldn't still be running (the central
+        # serializes them), but cancel any stragglers before starting a new one.
+        old = self._execs.pop(session_id, None)
+        if old and not old.done():
+            old.cancel()
+        self._execs[session_id] = asyncio.ensure_future(_run())
 
     def _on_close(self, session_id: int) -> None:
         pty = self._ptys.pop(session_id, None)
         if pty:
             pty.close()
+        task = self._execs.pop(session_id, None)
+        if task and not task.done():
+            task.cancel()  # Stop: kills the running command (see run_exec)
 
     def shutdown(self) -> None:
         """Close every session (used when a connection is reset/replaced)."""
         for pty in self._ptys.values():
             pty.close()
         self._ptys.clear()
+        for task in self._execs.values():
+            if not task.done():
+                task.cancel()
+        self._execs.clear()

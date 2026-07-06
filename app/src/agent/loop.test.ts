@@ -47,6 +47,51 @@ test("runs a tool call, feeds result back, then completes", async () => {
   assert.deepEqual(types, ["assistant", "command", "result", "assistant", "done"]);
 });
 
+test("history carries conversation context across separate runs", async () => {
+  const history: Turn[] = [];
+  const seen: Turn[][] = [];
+  const provider: LLMProvider = {
+    name: "fake",
+    model: "fake-1",
+    async next(_s, turns) {
+      seen.push(structuredClone(turns));
+      return { text: "ok", toolCalls: [] };
+    },
+  };
+  const noop: RunCommand = async () => ok("");
+
+  await collect(runAgent(provider, "first question", noop, { history }));
+  await collect(runAgent(provider, "second question", noop, { history }));
+
+  // The second run's provider call must still see the first exchange.
+  const userTexts = seen
+    .at(-1)!
+    .filter((t): t is Extract<Turn, { role: "user" }> => t.role === "user")
+    .map((t) => t.text);
+  assert.deepEqual(userTexts, ["first question", "second question"]);
+});
+
+test("an aborted signal stops the run before the next command", async () => {
+  const controller = new AbortController();
+  const provider = scriptedProvider([
+    { text: "first", toolCalls: [{ id: "c1", command: "one" }] },
+    { text: "second", toolCalls: [{ id: "c2", command: "two" }] },
+  ]);
+  const ran: string[] = [];
+  const runCommand: RunCommand = async (cmd) => {
+    ran.push(cmd);
+    controller.abort(); // stop mid-run, after the first command completes
+    return ok("");
+  };
+
+  const events = await collect(
+    runAgent(provider, "go", runCommand, { signal: controller.signal }),
+  );
+
+  assert.deepEqual(ran, ["one"]); // the second command never runs
+  assert.equal(events.at(-1)?.type, "stopped");
+});
+
 test("passes the command result back into the next provider call", async () => {
   const seen: Turn[][] = [];
   let i = 0;

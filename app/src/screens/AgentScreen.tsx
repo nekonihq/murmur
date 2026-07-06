@@ -2,21 +2,30 @@
 // run_shell_command calls; the client executes them on the Pi over BLE; results
 // flow back into the loop. Each step is rendered so the user can audit it.
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Switch,
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
+  Easing,
   Alert,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { Ionicons } from "@expo/vector-icons";
 
 import { MurmurClient } from "../client.ts";
 import { runAgent } from "../agent/loop.ts";
 import { formatResult } from "../providers/common.ts";
-import type { LLMProvider } from "../agent/types.ts";
+import type { LLMProvider, Turn } from "../agent/types.ts";
+import { loadSystemPrompt, loadSudoPassword } from "../storage/keys.ts";
+import { useTheme } from "../ThemeContext.tsx";
+import type { ThemeColors } from "../theme.ts";
+import { Markdown } from "../agent/Markdown.tsx";
 
 interface Props {
   client: MurmurClient;
@@ -24,34 +33,29 @@ interface Props {
 }
 
 interface Line {
-  kind: "user" | "assistant" | "command" | "result" | "denied" | "error";
+  kind: "user" | "assistant" | "command" | "result" | "denied" | "error" | "note";
   text: string;
 }
 
-const DANGER = /\b(rm|mkfs|dd|shutdown|reboot|:\s*\(\)\s*\{|>\s*\/dev\/sd)\b|rm\s+-rf/;
+const USES_SUDO = /\bsudo\b/;
 
 export function AgentScreen({ client, provider }: Props) {
   const [lines, setLines] = useState<Line[]>([]);
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
-  const [confirmDanger, setConfirmDanger] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // The running model transcript, persisted across questions so the agent keeps
+  // context. runAgent appends to this array in place.
+  const turnsRef = useRef<Turn[]>([]);
+  const { colors } = useTheme();
+  const headerHeight = useHeaderHeight();
 
   const push = (line: Line) =>
     setLines((prev) => {
       const next = [...prev, line];
       return next;
     });
-
-  function confirm(command: string): Promise<boolean> {
-    if (!confirmDanger || !DANGER.test(command)) return Promise.resolve(true);
-    return new Promise((resolve) => {
-      Alert.alert("Run this command?", command, [
-        { text: "Deny", style: "cancel", onPress: () => resolve(false) },
-        { text: "Run", style: "destructive", onPress: () => resolve(true) },
-      ]);
-    });
-  }
 
   async function submit() {
     const goal = input.trim();
@@ -63,9 +67,21 @@ export function AgentScreen({ client, provider }: Props) {
     setInput("");
     push({ kind: "user", text: goal });
     setRunning(true);
+    // Read prompt + sudo password fresh each run so edits in Settings take
+    // effect without remounting; undefined prompt falls back to the default.
+    const systemPrompt = (await loadSystemPrompt()) ?? undefined;
+    const sudoPassword = (await loadSudoPassword()) ?? undefined;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // Only attach the password to commands that actually invoke sudo, to keep
+    // the secret off the wire otherwise.
+    const runCommand = (cmd: string, t?: number) =>
+      client.exec(cmd, t, USES_SUDO.test(cmd) ? sudoPassword : undefined, controller.signal);
     try {
-      for await (const ev of runAgent(provider, goal, (cmd, t) => client.exec(cmd, t), {
-        confirm,
+      for await (const ev of runAgent(provider, goal, runCommand, {
+        systemPrompt,
+        signal: controller.signal,
+        history: turnsRef.current,
       })) {
         switch (ev.type) {
           case "assistant":
@@ -80,6 +96,9 @@ export function AgentScreen({ client, provider }: Props) {
           case "result":
             push({ kind: "result", text: formatResult(ev.result) });
             break;
+          case "stopped":
+            push({ kind: "note", text: "Stopped." });
+            break;
           case "error":
             push({ kind: "error", text: ev.message });
             break;
@@ -88,24 +107,78 @@ export function AgentScreen({ client, provider }: Props) {
       }
     } finally {
       setRunning(false);
+      abortRef.current = null;
     }
   }
 
+  function stop() {
+    abortRef.current?.abort();
+  }
+
+  // Wipe the model's memory (transcript) and the visible chat, after confirming
+  // since it's not undoable.
+  function clearContext() {
+    if (lines.length === 0 && turnsRef.current.length === 0) return;
+    Alert.alert(
+      "Clear conversation?",
+      "This resets the agent's memory and clears the chat. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            abortRef.current?.abort();
+            turnsRef.current = [];
+            setLines([]);
+          },
+        },
+      ],
+    );
+  }
+
   return (
-    <View style={{ flex: 1, padding: 12 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-        <Text style={{ flex: 1, fontSize: 18, fontWeight: "700" }}>
-          Agent {provider ? `· ${provider.name}` : ""}
-        </Text>
-        <Text style={{ marginRight: 6 }}>Confirm risky</Text>
-        <Switch value={confirmDanger} onValueChange={setConfirmDanger} />
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={headerHeight}
+    >
+      <View style={{ flex: 1, padding: 12 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {provider ? (
+            <>
+              <Pill label={provider.name} colors={colors} tone="accent" />
+              <Pill label={provider.model} colors={colors} tone="muted" />
+            </>
+          ) : (
+            <Pill label="No provider — configure in Settings" colors={colors} tone="muted" />
+          )}
+        </View>
+        {lines.length > 0 && (
+          <TouchableOpacity
+            onPress={clearContext}
+            hitSlop={8}
+            style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+          >
+            <Ionicons name="trash-outline" size={15} color={colors.textMid} />
+            <Text style={{ color: colors.textMid, fontSize: 13 }}>Clear</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }}>
         {lines.map((l, i) => (
-          <LineView key={i} line={l} />
+          <LineView key={i} line={l} colors={colors} />
         ))}
-        {running && <Text style={{ color: "#888", marginTop: 6 }}>…working</Text>}
+        {running && <ThinkingIndicator colors={colors} />}
       </ScrollView>
 
       <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
@@ -113,40 +186,161 @@ export function AgentScreen({ client, provider }: Props) {
           value={input}
           onChangeText={setInput}
           placeholder="Describe what to do on the Pi…"
-          style={{ flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10 }}
+          placeholderTextColor={colors.textMid}
+          style={{
+            flex: 1,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            padding: 10,
+            color: colors.textHigh,
+            backgroundColor: colors.surface,
+          }}
         />
         <TouchableOpacity
-          onPress={submit}
-          disabled={running}
+          onPress={running ? stop : submit}
           style={{
-            backgroundColor: running ? "#9ca3af" : "#2563eb",
+            backgroundColor: running ? colors.danger : colors.accent,
             paddingHorizontal: 16,
             justifyContent: "center",
             borderRadius: 8,
           }}
         >
-          <Text style={{ color: "#fff" }}>Send</Text>
+          <Text style={{ color: colors.accentText }}>{running ? "Stop" : "Send"}</Text>
         </TouchableOpacity>
       </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function LineView({ line, colors }: { line: Line; colors: ThemeColors }) {
+  switch (line.kind) {
+    case "user":
+      return (
+        <Bubble color={colors.accent} textColor={colors.accentText} align="flex-end" text={line.text} />
+      );
+    case "assistant":
+      return (
+        <View style={{ alignSelf: "flex-start", maxWidth: "85%", marginVertical: 4 }}>
+          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 10 }}>
+            <Markdown text={line.text} color={colors.textHigh} colors={colors} />
+          </View>
+        </View>
+      );
+    case "command":
+      return <Mono prefix="$ " text={line.text} bg={colors.codeBg} fg={colors.term} />;
+    case "result":
+      return <Mono text={line.text} bg={colors.codeBgAlt} fg={colors.codeFg} />;
+    case "denied":
+      return <Mono prefix="denied: " text={line.text} bg={colors.codeBg} fg={colors.warn} />;
+    case "error":
+      return <Text style={{ color: colors.danger, marginVertical: 4 }}>{line.text}</Text>;
+    case "note":
+      return (
+        <Text style={{ color: colors.textMid, marginVertical: 6, textAlign: "center", fontSize: 13 }}>
+          {line.text}
+        </Text>
+      );
+  }
+}
+
+const THINKING_WORDS = [
+  "Cogitating", "Percolating", "Noodling", "Conjuring", "Tinkering",
+  "Summoning", "Musing", "Whirring", "Pondering", "Scheming",
+  "Brewing", "Finagling", "Ruminating", "Vibing", "Wrangling",
+  "Spelunking", "Bamboozling", "Galloping", "Marinating", "Concocting",
+];
+
+const randomWord = () => THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)];
+
+/**
+ * Animated status while the agent works: whimsical words that rotate every few
+ * seconds, with a single-hue highlight that sweeps across the letters (a soft
+ * left-to-right shimmer, not a rainbow). Plus elapsed time.
+ */
+function ThinkingIndicator({ colors }: { colors: ThemeColors }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  const [word, setWord] = useState(randomWord);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: false, // color interpolation isn't native-driver-safe
+      }),
+    );
+    loop.start();
+    const start = Date.now();
+    const words = setInterval(() => setWord(randomWord()), 2600);
+    const secs = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => {
+      loop.stop();
+      clearInterval(words);
+      clearInterval(secs);
+    };
+  }, [anim]);
+
+  const chars = word.split("");
+  const L = chars.length;
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, marginBottom: 4 }}>
+      <View style={{ flexDirection: "row" }}>
+        {chars.map((ch, i) => {
+          // Each letter fades dim -> bright -> dim, phase-shifted by its position
+          // so a single highlight band travels across the word (left to right).
+          const phase = Animated.modulo(Animated.add(anim, (L - i) / L), 1);
+          const color = phase.interpolate({
+            inputRange: [0, 0.5, 1],
+            outputRange: [colors.textMid, colors.textHigh, colors.textMid],
+          });
+          return (
+            <Animated.Text key={i} style={{ color, fontSize: 13, fontWeight: "600", letterSpacing: 0.2 }}>
+              {ch}
+            </Animated.Text>
+          );
+        })}
+        <Text style={{ color: colors.textMid, fontSize: 13, fontWeight: "600" }}>…</Text>
+      </View>
+      <Text style={{ color: colors.textMid, fontSize: 11, marginLeft: 8 }}>{elapsed}s</Text>
     </View>
   );
 }
 
-function LineView({ line }: { line: Line }) {
-  switch (line.kind) {
-    case "user":
-      return <Bubble color="#2563eb" textColor="#fff" align="flex-end" text={line.text} />;
-    case "assistant":
-      return <Bubble color="#f3f4f6" textColor="#111" align="flex-start" text={line.text} />;
-    case "command":
-      return <Mono prefix="$ " text={line.text} bg="#111" fg="#0f0" />;
-    case "result":
-      return <Mono text={line.text} bg="#1f2937" fg="#d1d5db" />;
-    case "denied":
-      return <Mono prefix="denied: " text={line.text} bg="#111" fg="#f59e0b" />;
-    case "error":
-      return <Text style={{ color: "#dc2626", marginVertical: 4 }}>{line.text}</Text>;
-  }
+function Pill({
+  label,
+  colors,
+  tone,
+}: {
+  label: string;
+  colors: ThemeColors;
+  tone: "accent" | "muted";
+}) {
+  const accent = tone === "accent";
+  return (
+    <View
+      style={{
+        backgroundColor: accent ? colors.accent : colors.surfaceAlt,
+        borderRadius: 999,
+        paddingVertical: 3,
+        paddingHorizontal: 10,
+      }}
+    >
+      <Text
+        style={{
+          color: accent ? colors.accentText : colors.textMid,
+          fontSize: 12,
+          fontWeight: accent ? "600" : "400",
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
 }
 
 function Bubble(props: { color: string; textColor: string; align: "flex-start" | "flex-end"; text: string }) {

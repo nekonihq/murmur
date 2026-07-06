@@ -41,6 +41,12 @@ export type SignalName = "INT" | "TERM" | "HUP";
 export interface Exec {
   cmd: string;
   timeout_ms?: number;
+  /**
+   * Password fed to sudo via an askpass helper on the Pi. Sent only when the
+   * user has configured one and the command uses sudo, so the secret isn't
+   * transmitted on every command.
+   */
+  sudo_password?: string;
 }
 
 export interface ExecResult {
@@ -57,9 +63,4 @@ export interface CloseSession {
 export interface Credit {
   session_id: number;
   n: number;
-}
-
-export interface ErrorMsg {
-  code: string;
-  msg: string;
 }

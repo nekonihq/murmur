@@ -1,5 +1,12 @@
 # Murmur — BLE Remote Shell + AI Agent for Raspberry Pi
 
+> **Historical design note.** This is the original build plan, kept for context. What actually
+> shipped differs in a few places: the daemon is implemented in **Python** (`daemon/`, BLE via
+> `bless`), not Rust; tests run under `node --test` (app) and `python -m unittest` (daemon),
+> not Jest; and the "confirm-before-run" toggle described below was later removed. The
+> architecture and wire protocol otherwise match what shipped — see `PROTOCOL.md` and the
+> READMEs for current details.
+
 ## Context
 
 `murmur` is a new, greenfield project (the working directory is empty). The goal is a

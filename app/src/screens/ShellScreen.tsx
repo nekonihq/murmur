@@ -1,7 +1,7 @@
 // Shell mode: the xterm terminal with an accessory key bar pinned just above the
 // keyboard — Esc, Tab, a sticky Ctrl modifier, arrows — plus copy/paste.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,11 +11,12 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { MurmurClient } from "../client.ts";
 import { Terminal, type TerminalHandle } from "../terminal/Terminal.tsx";
-import { colors } from "../theme.ts";
+import { useTheme } from "../ThemeContext.tsx";
+import type { ThemeColors } from "../theme.ts";
 
 interface Props {
   client: MurmurClient;
@@ -38,9 +39,8 @@ export function ShellScreen({ client }: Props) {
   const opened = useRef(false);
   const ctrlArmed = useRef(false);
   const [ctrlOn, setCtrlOn] = useState(false);
-  // The Shell tab hides the nav header, so the only thing above the keyboard-
-  // avoiding view is the status-bar safe area.
-  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
     if (opened.current) return;
@@ -73,7 +73,10 @@ export function ShellScreen({ client }: Props) {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={insets.top}
+        // The SafeAreaView above already offsets the top inset, so the avoiding
+        // view's frame bottom is the screen bottom — no extra offset, or the key
+        // bar floats a top-inset's worth above the keyboard.
+        keyboardVerticalOffset={0}
       >
         <Terminal
           ref={termRef}
@@ -121,6 +124,8 @@ function Key({
   onPress: () => void;
   active?: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <TouchableOpacity onPress={onPress} style={[styles.key, active && styles.keyActive]}>
       <Text style={[styles.keyText, active && styles.keyTextActive]}>{label}</Text>
@@ -130,27 +135,30 @@ function Key({
 
 const BAR_HEIGHT = 48;
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
-  container: { flex: 1, backgroundColor: "#000" },
-  barWrap: {
-    height: BAR_HEIGHT,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderColor: colors.border,
-  },
-  barContent: { alignItems: "center", gap: 6, paddingHorizontal: 8 },
-  divider: { width: 1, height: 22, backgroundColor: colors.border, marginHorizontal: 2 },
-  key: {
-    minWidth: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceAlt,
-  },
-  keyActive: { backgroundColor: colors.accent },
-  keyText: { color: colors.textHigh, fontSize: 14 },
-  keyTextActive: { color: "#fff", fontWeight: "700" },
-});
+// The terminal (xterm WebView) and its surrounds follow the app theme; see
+// Terminal.tsx for the xterm palette.
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    container: { flex: 1, backgroundColor: colors.bg },
+    barWrap: {
+      height: BAR_HEIGHT,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderColor: colors.border,
+    },
+    barContent: { alignItems: "center", gap: 6, paddingHorizontal: 8 },
+    divider: { width: 1, height: 22, backgroundColor: colors.border, marginHorizontal: 2 },
+    key: {
+      minWidth: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 6,
+      backgroundColor: colors.surfaceAlt,
+    },
+    keyActive: { backgroundColor: colors.accent },
+    keyText: { color: colors.textHigh, fontSize: 14 },
+    keyTextActive: { color: colors.accentText, fontWeight: "700" },
+  });

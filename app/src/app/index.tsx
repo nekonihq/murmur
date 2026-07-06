@@ -1,18 +1,21 @@
 // Devices route: scan for murmur peripherals, then connect (if paired) or route
 // to the pairing screen.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 
 import { BleTransport, type DiscoveredDevice } from "../ble/transport.ts";
 import { useConnection } from "../ConnectionContext.tsx";
+import { useTheme } from "../ThemeContext.tsx";
 import { loadPsk } from "../storage/keys.ts";
-import { colors } from "../theme.ts";
+import type { ThemeColors } from "../theme.ts";
 
 export default function DevicesRoute() {
   const router = useRouter();
   const { connect } = useConnection();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [transport] = useState(() => new BleTransport());
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [busy, setBusy] = useState(false);
@@ -71,12 +74,13 @@ export default function DevicesRoute() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
-  center: { flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" },
-  row: { paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border },
-  name: { fontSize: 16, color: colors.textHigh },
-  id: { fontSize: 12, color: colors.textMid },
-  dim: { color: colors.textMid, marginTop: 12 },
-  error: { color: colors.danger, marginBottom: 8 },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
+    center: { flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" },
+    row: { paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border },
+    name: { fontSize: 16, color: colors.textHigh },
+    id: { fontSize: 12, color: colors.textMid },
+    dim: { color: colors.textMid, marginTop: 12 },
+    error: { color: colors.danger, marginBottom: 8 },
+  });

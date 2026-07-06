@@ -4,11 +4,13 @@
 // injectJavaScript(murmurWrite) -> term.write. Copy/paste go through the host
 // clipboard since a WebView canvas has no native selection UI on mobile.
 
-import React, { useImperativeHandle, useRef, forwardRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import * as Clipboard from "expo-clipboard";
 
 import { toBase64 } from "../crypto/base64.ts";
+import { useTheme } from "../ThemeContext.tsx";
+import type { ColorScheme, ThemeColors } from "../theme.ts";
 
 export interface TerminalHandle {
   /** Write raw PTY bytes into the terminal. */
@@ -32,13 +34,39 @@ export interface TerminalProps {
   onCopied?: (text: string) => void;
 }
 
+/** xterm theme derived from the app palette. On a light background the default
+ *  ANSI palette (bright whites/yellows) is unreadable, so light mode ships a
+ *  darker, legible palette; dark mode keeps xterm's tuned defaults. */
+function terminalTheme(scheme: ColorScheme, colors: ThemeColors): Record<string, string> {
+  const base = {
+    background: colors.bg,
+    foreground: colors.textHigh,
+    cursor: colors.accent,
+    cursorAccent: colors.bg,
+  };
+  if (scheme === "light") {
+    return {
+      ...base,
+      selectionBackground: "#c7ddfb",
+      black: "#1f2937", red: "#b91c1c", green: "#15803d", yellow: "#b45309",
+      blue: "#1d4ed8", magenta: "#a21caf", cyan: "#0e7490", white: "#374151",
+      brightBlack: "#6b7280", brightRed: "#dc2626", brightGreen: "#16a34a",
+      brightYellow: "#d97706", brightBlue: "#2563eb", brightMagenta: "#c026d3",
+      brightCyan: "#0891b2", brightWhite: "#111827",
+    };
+  }
+  return { ...base, selectionBackground: "#264f78" };
+}
+
 // xterm + addons from CDN. The phone has internet (only the Pi is offline); for
 // a fully offline app, vendor these into the bundle.
-const HTML = `<!doctype html><html><head>
+function buildHtml(theme: Record<string, string>): string {
+  const themeJson = JSON.stringify(theme);
+  return `<!doctype html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
 <style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  html,body{margin:0;height:100%;background:${theme.background};overflow:hidden}
   #t{height:100%;width:100%}
   /* let touch scroll the xterm viewport smoothly */
   .xterm-viewport{-webkit-overflow-scrolling:touch}
@@ -51,17 +79,31 @@ const HTML = `<!doctype html><html><head>
   const term = new Terminal({
     convertEol: false, fontSize: 13, cursorBlink: true, scrollback: 5000,
     scrollSensitivity: 3, fastScrollSensitivity: 8, smoothScrollDuration: 0,
+    theme: ${themeJson},
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(document.getElementById('t'));
   // WebGL renderer = much smoother scrolling/painting; fall back silently.
   try { term.loadAddon(new WebglAddon.WebglAddon()); } catch (e) {}
-  fit.fit();
   const post = (m) => window.ReactNativeWebView.postMessage(JSON.stringify(m));
   term.onData((d) => post({ t: 'data', d }));
   const reportSize = () => post({ t: 'resize', cols: term.cols, rows: term.rows });
-  window.addEventListener('resize', () => { fit.fit(); reportSize(); });
+  // Fit against the *settled* layout. Fitting once at script-eval time can
+  // measure a stale/rounded height and leave the top row clipped, so also refit
+  // on the next frame and whenever the container actually changes size.
+  const el = document.getElementById('t');
+  const refit = () => { try { fit.fit(); } catch (e) {} reportSize(); };
+  refit();
+  requestAnimationFrame(refit);
+  if (window.ResizeObserver) new ResizeObserver(refit).observe(el);
+  window.addEventListener('resize', refit);
+
+  // Re-theme live (e.g. system light/dark switch) without reloading the session.
+  window.murmurTheme = (t) => {
+    term.options.theme = t;
+    document.body.style.background = t.background;
+  };
 
   window.murmurWrite = (b64) => {
     const bin = atob(b64);
@@ -86,12 +128,18 @@ const HTML = `<!doctype html><html><head>
   term.focus();
   document.getElementById('t').addEventListener('click', () => term.focus());
 </script></body></html>`;
+}
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   { onInput, onResize, onCopied },
   ref,
 ) {
   const webRef = useRef<WebView>(null);
+  const { scheme, colors } = useTheme();
+  // Freeze the initial HTML so changing the theme doesn't reload the WebView
+  // (which would drop the live session); live changes go through murmurTheme.
+  const htmlRef = useRef<string | undefined>(undefined);
+  if (!htmlRef.current) htmlRef.current = buildHtml(terminalTheme(scheme, colors));
   const onCopiedRef = useRef(onCopied);
   onCopiedRef.current = onCopied;
 
@@ -117,6 +165,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     },
   }));
 
+  // Push theme changes into the live terminal (no reload).
+  useEffect(() => {
+    const t = JSON.stringify(terminalTheme(scheme, colors));
+    webRef.current?.injectJavaScript(`window.murmurTheme && window.murmurTheme(${t}); true;`);
+  }, [scheme, colors]);
+
   const handleMessage = (e: WebViewMessageEvent) => {
     let msg: { t: string; d?: string; cols?: number; rows?: number; text?: string };
     try {
@@ -138,13 +192,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     <WebView
       ref={webRef}
       originWhitelist={["*"]}
-      source={{ html: HTML }}
+      source={{ html: htmlRef.current }}
       onMessage={handleMessage}
       keyboardDisplayRequiresUserAction={false}
       // Let xterm's own viewport handle scrolling; the page itself doesn't scroll.
       scrollEnabled={false}
       overScrollMode="never"
-      style={{ flex: 1, backgroundColor: "#000" }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
     />
   );
 });

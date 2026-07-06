@@ -3,7 +3,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
 import { ConnectionProvider } from "../ConnectionContext.tsx";
-import { colors } from "../theme.ts";
+import { ThemeProvider, useTheme } from "../ThemeContext.tsx";
 import { log } from "../log.ts";
 
 // Logs once per bundle evaluation. If this reappears during a live session, the
@@ -12,8 +12,20 @@ log("boot", "app bundle evaluated");
 
 export default function RootLayout() {
   return (
-    <ConnectionProvider>
-      <StatusBar style="light" />
+    <ThemeProvider>
+      <ConnectionProvider>
+        <RootNav />
+      </ConnectionProvider>
+    </ThemeProvider>
+  );
+}
+
+// Split out so it can read the resolved palette from ThemeProvider above it.
+function RootNav() {
+  const { colors, scheme } = useTheme();
+  return (
+    <>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
@@ -25,6 +37,6 @@ export default function RootLayout() {
         <Stack.Screen name="pair" options={{ title: "Pair device" }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
-    </ConnectionProvider>
+    </>
   );
 }

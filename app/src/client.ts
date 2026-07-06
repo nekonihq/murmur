@@ -39,6 +39,14 @@ export const EXEC_SESSION = 2;
 const CREDIT_WINDOW = 32;
 const CREDIT_REFILL_AT = 16;
 
+/**
+ * Backstop timeout for agent-mode commands when the model doesn't request one.
+ * Without it, a blocking command (a server, `journalctl -f`, an apt prompt…)
+ * never returns and the agent loop hangs forever. The model can still ask for
+ * longer via the tool's `timeout_seconds`.
+ */
+const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
+
 const PROTO_VERSION = 1;
 
 /** Fail the connect attempt if the handshake doesn't complete in time. */
@@ -79,6 +87,16 @@ export class MurmurClient {
   private reCtrl = new Reassembler();
   private seqC2p: SeqCounter = { value: 0 };
   private seqCtrl: SeqCounter = { value: 0 };
+  // Per-channel write mutex. Sequence numbers are assigned when a message is
+  // fragmented, and the daemon's reassembler treats any gap in the per-channel
+  // sequence as a lost frame (dropping in-progress reassembly). Concurrent
+  // senders sharing a channel would interleave their awaited writes and put
+  // frames on the wire out of seq order, corrupting fragmented messages. Chain
+  // each channel's sends so a message's frames stay contiguous and in order.
+  private sendTail: { c2p: Promise<void>; ctrl: Promise<void> } = {
+    c2p: Promise.resolve(),
+    ctrl: Promise.resolve(),
+  };
 
   private authPending: Pending<void> | null = null;
   private openPending = new Map<number, Pending<void>>();
@@ -206,7 +224,13 @@ export class MurmurClient {
   // ---- Agent mode -------------------------------------------------------
 
   /** Run a command on the Pi and resolve with its result (agent mode). */
-  async exec(command: string, timeoutMs?: number): Promise<ExecResult> {
+  async exec(
+    command: string,
+    timeoutMs?: number,
+    sudoPassword?: string,
+    signal?: AbortSignal,
+  ): Promise<ExecResult> {
+    if (signal?.aborted) throw new Error("aborted");
     if (!this.execSessionReady) {
       await this.openSession(EXEC_SESSION, "exec", 0, 0);
       this.execSessionReady = true;
@@ -214,12 +238,34 @@ export class MurmurClient {
     const result = new Promise<ExecResult>((resolve, reject) => {
       this.execPending.set(EXEC_SESSION, { resolve, reject });
     });
+    // On Stop: reject immediately so the UI unblocks, and ask the Pi to kill the
+    // running command (CLOSE_SESSION). Reopen the exec session next time so a
+    // late result from the killed command can't land on a fresh request.
+    const onAbort = () => {
+      const pending = this.execPending.get(EXEC_SESSION);
+      if (pending) {
+        this.execPending.delete(EXEC_SESSION);
+        pending.reject(new Error("aborted"));
+      }
+      this.execSessionReady = false;
+      this.sendC2p(
+        Opcode.CloseSession,
+        EXEC_SESSION,
+        jsonPayload({ session_id: EXEC_SESSION }),
+      ).catch(swallow);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
     const payload = jsonPayload({
       cmd: command,
-      ...(timeoutMs != null ? { timeout_ms: timeoutMs } : {}),
+      timeout_ms: timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS,
+      ...(sudoPassword ? { sudo_password: sudoPassword } : {}),
     });
-    await this.sendC2p(Opcode.Exec, EXEC_SESSION, payload);
-    return result;
+    try {
+      await this.sendC2p(Opcode.Exec, EXEC_SESSION, payload);
+      return await result;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+    }
   }
 
   // ---- Session + flow-control plumbing ---------------------------------
@@ -354,17 +400,25 @@ export class MurmurClient {
     await this.sendFragments("ctrl", opcode, sessionId, payload, this.seqCtrl);
   }
 
-  private async sendFragments(
+  private sendFragments(
     chan: "c2p" | "ctrl",
     opcode: OpcodeValue,
     sessionId: number,
     payload: Uint8Array,
     seq: SeqCounter,
   ): Promise<void> {
-    const max = maxPayload(this.transport.negotiatedMtu());
-    const frames = fragment(opcode, sessionId, 0, payload, max, seq);
-    for (const f of frames) {
-      await this.transport.send(chan, encodeFrame(f));
-    }
+    // Serialize per channel: fragment (which assigns sequence numbers) and the
+    // writes must run as one uninterrupted unit so wire order == seq order.
+    const run = this.sendTail[chan].then(async () => {
+      const max = maxPayload(this.transport.negotiatedMtu());
+      const frames = fragment(opcode, sessionId, 0, payload, max, seq);
+      for (const f of frames) {
+        await this.transport.send(chan, encodeFrame(f));
+      }
+    });
+    // Keep the chain alive even if this send rejects, so one failure doesn't
+    // wedge the channel; callers still observe the rejection via `run`.
+    this.sendTail[chan] = run.catch(() => {});
+    return run;
   }
 }

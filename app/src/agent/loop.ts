@@ -22,6 +22,18 @@ export interface AgentOptions {
    * the model is told it was denied and can adjust. Defaults to allow-all.
    */
   confirm?: (command: string) => boolean | Promise<boolean>;
+  /**
+   * Aborts the run. Checked before each LLM call and each command, so a stopped
+   * agent halts within (at most) the current command's timeout — no further
+   * steps or tool calls are issued.
+   */
+  signal?: AbortSignal;
+  /**
+   * Prior conversation to continue. The new goal and every assistant/tool turn
+   * are appended to this array in place, so the caller keeps the running
+   * transcript across calls (multi-turn memory). Omit to start fresh.
+   */
+  history?: Turn[];
 }
 
 /** Run a command on the Pi (BLE exec session) and return its result. */
@@ -47,14 +59,26 @@ export async function* runAgent(
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const maxSteps = options.maxSteps ?? 25;
   const confirm = options.confirm ?? (() => true);
+  const signal = options.signal;
 
-  const turns: Turn[] = [{ role: "user", text: goal }];
+  // Continue the caller's transcript (mutated in place) so context carries
+  // across questions; fall back to a fresh one when no history is supplied.
+  const turns: Turn[] = options.history ?? [];
+  turns.push({ role: "user", text: goal });
 
   for (let step = 0; step < maxSteps; step++) {
+    if (signal?.aborted) {
+      yield { type: "stopped" };
+      return;
+    }
     let turn;
     try {
-      turn = await provider.next(systemPrompt, turns);
+      turn = await provider.next(systemPrompt, turns, signal);
     } catch (e) {
+      if (signal?.aborted) {
+        yield { type: "stopped" };
+        return;
+      }
       yield { type: "error", message: errMessage(e) };
       return;
     }
@@ -71,6 +95,10 @@ export async function* runAgent(
 
     const results: ToolResult[] = [];
     for (const call of turn.toolCalls) {
+      if (signal?.aborted) {
+        yield { type: "stopped" };
+        return;
+      }
       const allowed = await confirm(call.command);
       if (!allowed) {
         yield { type: "command_denied", id: call.id, command: call.command };
@@ -82,6 +110,10 @@ export async function* runAgent(
       try {
         result = await runCommand(call.command, call.timeoutMs);
       } catch (e) {
+        if (signal?.aborted) {
+          yield { type: "stopped" };
+          return;
+        }
         result = {
           stdout: "",
           stderr: `transport error: ${errMessage(e)}`,

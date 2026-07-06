@@ -32,7 +32,7 @@ export class OpenAIProvider implements LLMProvider {
     this.model = config.model ?? DEFAULT_MODELS.openai;
   }
 
-  async next(systemPrompt: string, turns: Turn[]): Promise<ProviderTurn> {
+  async next(systemPrompt: string, turns: Turn[], signal?: AbortSignal): Promise<ProviderTurn> {
     const messages: unknown[] = [{ role: "system", content: systemPrompt }];
     for (const turn of turns) messages.push(...toOpenAIMessages(turn));
 
@@ -55,6 +55,7 @@ export class OpenAIProvider implements LLMProvider {
       API_URL,
       { authorization: `Bearer ${this.apiKey}` },
       body,
+      signal,
     )) as {
       choices?: { message?: { content?: string | null; tool_calls?: OpenAIToolCall[] } }[];
     };
@@ -75,28 +76,32 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
-function toOpenAIMessages(turn: Turn): unknown[] {
+export function toOpenAIMessages(turn: Turn): unknown[] {
   switch (turn.role) {
     case "user":
       return [{ role: "user", content: turn.text }];
-    case "assistant":
+    case "assistant": {
+      const toolCalls = turn.toolCalls.map((c) => ({
+        id: c.id,
+        type: "function",
+        function: {
+          name: SHELL_TOOL.name,
+          arguments: JSON.stringify({
+            command: c.command,
+            ...(c.timeoutMs != null ? { timeout_seconds: c.timeoutMs / 1000 } : {}),
+          }),
+        },
+      }));
+      // Only send `tool_calls` when non-empty — OpenAI rejects an empty array
+      // (400). `content` may be null only when tool_calls are present.
       return [
         {
           role: "assistant",
-          content: turn.text || null,
-          tool_calls: turn.toolCalls.map((c) => ({
-            id: c.id,
-            type: "function",
-            function: {
-              name: SHELL_TOOL.name,
-              arguments: JSON.stringify({
-                command: c.command,
-                ...(c.timeoutMs != null ? { timeout_seconds: c.timeoutMs / 1000 } : {}),
-              }),
-            },
-          })),
+          content: turn.text || (toolCalls.length ? null : ""),
+          ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
         },
       ];
+    }
     case "tool":
       return turn.results.map((r) => ({
         role: "tool",

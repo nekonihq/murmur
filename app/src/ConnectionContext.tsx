@@ -1,6 +1,6 @@
 // Holds the active MurmurClient and the configured LLM provider across routes,
 // so navigating between the Shell/Agent/Settings tabs doesn't drop the BLE
-// connection. (Same role as nekoni's ConnectionContext.)
+// connection.
 
 import React, { createContext, useCallback, useContext, useState } from "react";
 

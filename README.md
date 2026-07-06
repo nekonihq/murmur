@@ -6,7 +6,7 @@ required on the Pi. The Pi can be fully offline and headless; your phone is the 
 Two halves:
 
 - **`murmurd`** — a Python daemon on the Pi that exposes a shell over a custom BLE GATT
-  service (no compilation needed; a Rust reference implementation is kept in `daemon-rust/`).
+  service — no compilation needed, just BlueZ and a venv.
 - **murmur app** — a React Native app (iOS + Android) that connects over BLE and runs in two
   modes:
   - **Shell mode** — a real interactive terminal (xterm.js).
@@ -29,10 +29,9 @@ framing + flow-control protocol on top of GATT — see [`PROTOCOL.md`](./PROTOCO
 
 ```
 daemon/        Python daemon (murmurd) — runs on the Pi
-daemon-rust/   Rust reference implementation (cross-compile if you prefer it)
 app/           React Native / Expo app (iOS + Android)
 docs/          PLAN.md and design notes
-PROTOCOL.md    the wire protocol — single source of truth for all sides
+PROTOCOL.md    the wire protocol — single source of truth for both sides
 ```
 
 ## Status
@@ -51,13 +50,11 @@ python3 -m unittest discover -s tests -t .   # protocol/auth/flow-control/exec t
 ```
 
 Install on the Pi with a venv (no compilation) — see [`daemon/README.md`](./daemon/README.md).
-A Rust implementation is preserved in `daemon-rust/` (`cargo test`) if you'd rather
-cross-compile a single binary.
 
 ### App
 
 ```sh
 cd app
 npm install
-npm test            # protocol mirror round-trip tests (Jest)
+npm test            # protocol mirror round-trip tests (node --test)
 ```

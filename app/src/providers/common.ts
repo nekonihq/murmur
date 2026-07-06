@@ -42,19 +42,38 @@ export function parseToolArgs(args: unknown): { command: string; timeoutMs?: num
   return { command, timeoutMs: secs != null ? Math.round(secs * 1000) : undefined };
 }
 
+/** Backstop so a stalled LLM request can't hang the agent forever. */
+const REQUEST_TIMEOUT_MS = 120_000;
+
 export async function postJson(
   url: string,
   headers: Record<string, string>,
   body: unknown,
+  signal?: AbortSignal,
 ): Promise<unknown> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status} from ${url}: ${text.slice(0, 500)}`);
+  // One controller drives both the caller's Stop signal and our own timeout, so
+  // fetch is actually cancelled (RN fetch ignores everything but its signal).
+  const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener("abort", onAbort, { once: true });
   }
-  return res.json();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} from ${url}: ${text.slice(0, 500)}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
 }

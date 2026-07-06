@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-navigation/elements": "^2.9.26",
     "expo": "~55.0.8",
     "expo-clipboard": "~55.0.0",
     "expo-dev-client": "~55.0.13",
