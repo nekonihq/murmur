@@ -92,6 +92,65 @@ test("an aborted signal stops the run before the next command", async () => {
   assert.equal(events.at(-1)?.type, "stopped");
 });
 
+test("stopping mid-command still leaves a valid transcript (tool_use is answered)", async () => {
+  // The BLE exec rejects when the user hits Stop, so runCommand throws after the
+  // signal aborts — the tool never returns a real result.
+  const history: Turn[] = [];
+  const controller = new AbortController();
+  const provider = scriptedProvider([
+    { text: "working", toolCalls: [{ id: "c1", command: "long-thing" }] },
+  ]);
+  const runCommand: RunCommand = async () => {
+    controller.abort();
+    throw new Error("aborted");
+  };
+
+  const events = await collect(
+    runAgent(provider, "go", runCommand, { history, signal: controller.signal }),
+  );
+
+  assert.equal(events.at(-1)?.type, "stopped");
+  // Transcript must end with a tool turn, not a dangling assistant tool call...
+  const last = history.at(-1)!;
+  assert.equal(last.role, "tool");
+  // ...and every assistant tool_use id has a matching tool_result id.
+  const assistant = history.find((t) => t.role === "assistant")!;
+  const toolTurn = history.find((t) => t.role === "tool")!;
+  assert.equal(assistant.role, "assistant");
+  assert.equal(toolTurn.role, "tool");
+  assert.deepEqual(
+    toolTurn.role === "tool" ? toolTurn.results.map((r) => r.id) : [],
+    assistant.role === "assistant" ? assistant.toolCalls.map((c) => c.id) : [],
+  );
+});
+
+test("heals a pre-existing dangling tool_use in history before the next run", async () => {
+  // A transcript corrupted by an earlier hard stop (assistant tool_use with no
+  // following tool result) — e.g. a conversation reopened from disk.
+  const history: Turn[] = [
+    { role: "user", text: "old" },
+    { role: "assistant", text: "", toolCalls: [{ id: "x1", command: "cmd" }] },
+  ];
+  const seen: Turn[][] = [];
+  const provider: LLMProvider = {
+    name: "fake",
+    model: "fake-1",
+    async next(_s, turns) {
+      seen.push(structuredClone(turns));
+      return { text: "ok", toolCalls: [] };
+    },
+  };
+
+  await collect(runAgent(provider, "new question", async () => ok(""), { history }));
+
+  // The provider must never see the dangling call: a tool turn for x1 is
+  // inserted right after the assistant call, then the new user question.
+  const turns = seen[0];
+  const idx = turns.findIndex((t) => t.role === "assistant");
+  assert.equal(turns[idx + 1].role, "tool");
+  assert.equal(turns[idx + 2].role, "user");
+});
+
 test("passes the command result back into the next provider call", async () => {
   const seen: Turn[][] = [];
   let i = 0;

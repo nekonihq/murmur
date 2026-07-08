@@ -46,6 +46,31 @@ const DENIED: ExecResult = {
   truncated: false,
 };
 
+const STOPPED: ExecResult = {
+  stdout: "",
+  stderr: "command was stopped by the user",
+  exit_code: 130, // 128 + SIGINT, the conventional "interrupted" code
+  truncated: false,
+};
+
+/**
+ * Providers require every assistant `tool_use` to be answered by a matching
+ * `tool_result` in the next turn. If a previous run was aborted between issuing
+ * tool calls and recording their results, the transcript can end with a
+ * dangling assistant tool-call turn — which makes the next request malformed
+ * (Anthropic returns HTTP 400). Seal any such tail with "stopped" results so a
+ * continued conversation (or a reopened, previously-corrupted one) stays valid.
+ */
+function sealPendingToolCalls(turns: Turn[]): void {
+  const last = turns[turns.length - 1];
+  if (last && last.role === "assistant" && last.toolCalls.length > 0) {
+    turns.push({
+      role: "tool",
+      results: last.toolCalls.map((c) => ({ id: c.id, result: STOPPED })),
+    });
+  }
+}
+
 /**
  * Drive the agent to completion, yielding {@link AgentEvent}s as it goes.
  * Consumers render each event (assistant text, command, result) in the chat UI.
@@ -64,6 +89,10 @@ export async function* runAgent(
   // Continue the caller's transcript (mutated in place) so context carries
   // across questions; fall back to a fresh one when no history is supplied.
   const turns: Turn[] = options.history ?? [];
+  // Repair a transcript left dangling by a prior hard stop before appending the
+  // new turn, so continuing (or resuming a saved chat) can't send a malformed
+  // request.
+  sealPendingToolCalls(turns);
   turns.push({ role: "user", text: goal });
 
   for (let step = 0; step < maxSteps; step++) {
@@ -94,10 +123,15 @@ export async function* runAgent(
     }
 
     const results: ToolResult[] = [];
+    let stopped = false;
     for (const call of turn.toolCalls) {
-      if (signal?.aborted) {
-        yield { type: "stopped" };
-        return;
+      if (signal?.aborted) stopped = true;
+      if (stopped) {
+        // Aborted mid-batch: still record a result for every remaining call so
+        // each of the assistant's tool_use blocks has a matching tool_result
+        // and the transcript stays valid for the next request.
+        results.push({ id: call.id, result: STOPPED });
+        continue;
       }
       const allowed = await confirm(call.command);
       if (!allowed) {
@@ -111,8 +145,12 @@ export async function* runAgent(
         result = await runCommand(call.command, call.timeoutMs);
       } catch (e) {
         if (signal?.aborted) {
-          yield { type: "stopped" };
-          return;
+          // Stop hit while the command was in flight. Record it as stopped and
+          // let the loop seal the rest, rather than returning with a dangling
+          // tool call.
+          stopped = true;
+          results.push({ id: call.id, result: STOPPED });
+          continue;
         }
         result = {
           stdout: "",
@@ -124,7 +162,13 @@ export async function* runAgent(
       yield { type: "result", id: call.id, result };
       results.push({ id: call.id, result });
     }
+    // Always append the tool turn (one result per call) before possibly
+    // stopping, so the assistant's tool_use blocks are never left unanswered.
     turns.push({ role: "tool", results });
+    if (stopped) {
+      yield { type: "stopped" };
+      return;
+    }
   }
 
   yield {

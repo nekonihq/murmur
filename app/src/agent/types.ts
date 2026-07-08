@@ -90,5 +90,12 @@ export const DEFAULT_SYSTEM_PROMPT =
   "You accomplish the user's goal by running shell commands with the " +
   "run_shell_command tool and reasoning about their output. The Pi may be " +
   "offline except for this link, so do not assume internet access on the device. " +
+  "For commands that need root, just prefix them with `sudo` — a password is " +
+  "supplied automatically and non-interactively (an askpass helper answers the " +
+  "prompt), so sudo will not hang or block. Do NOT use `sudo -n`, and do not " +
+  "conclude that privilege escalation is impossible. If a command fails with a " +
+  "permission error (EPERM / \"operation not permitted\"), retry it with `sudo`. " +
+  "Only if sudo itself reports an authentication failure should you tell the user " +
+  "to set the sudo password in Settings. " +
   "Run small, targeted commands; check results before continuing; and explain " +
   "what you find. When the goal is met, stop calling tools and summarize.";

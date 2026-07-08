@@ -116,6 +116,58 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab    # persist across r
 
 The compile is a one-time cost — pip caches the wheel for later installs.
 
+## Privileges & sudo
+
+`murmurd` runs the shell as a **non-root** user by design (the sample
+[`../docs/murmurd.service`](../docs/murmurd.service) uses a dedicated `murmur` user). The
+protocol carries an optional `sudo_password` (see [`../PROTOCOL.md`](../PROTOCOL.md)) and the
+daemon feeds it to `sudo` through an askpass helper, so the agent *can* run privileged
+commands — **but only if the service is configured to allow it.** The hardened unit
+deliberately blocks privilege escalation.
+
+If `sudo` fails with "operation not permitted" or never actually elevates, the cause is the
+unit's hardening, in this order:
+
+1. **`NoNewPrivileges=true`** — sets the kernel `no_new_privs` bit, which is inherited by every
+   child and can't be cleared. `sudo` is setuid-root; under `no_new_privs`, `execve` of a
+   setuid binary does **not** grant root, so sudo can never elevate. This is the hard blocker.
+2. **`ProtectSystem=strict` / `ProtectHome=read-only`** — even once sudo can elevate, most of
+   the filesystem is read-only for the whole service (children included), so privileged
+   *writes* still fail.
+3. **No sudoers entry** — the `murmur` system user isn't in `sudo`/`admin`, so it isn't
+   authorized regardless.
+
+To allow sudo, edit `/etc/systemd/system/murmurd.service` — in the `# Hardening` block remove
+`NoNewPrivileges=true` and relax the filesystem protections:
+
+```ini
+ProtectSystem=no
+ProtectHome=no
+PrivateTmp=true
+```
+
+authorize the user (password-gated — the app supplies the password you set in Settings):
+
+```sh
+echo 'murmur ALL=(ALL:ALL) ALL' | sudo tee /etc/sudoers.d/murmur
+sudo chmod 0440 /etc/sudoers.d/murmur
+sudo visudo -cf /etc/sudoers.d/murmur        # validate syntax
+```
+
+then reload, restart, and set the **sudo password** in the app's Settings:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl restart murmurd
+```
+
+> **Security:** enabling sudo means anyone who can pair a phone (i.e. holds the PSK)
+> effectively has **root** on the Pi. Only do this where that's acceptable. For passwordless
+> sudo, use `NOPASSWD:ALL` in the sudoers line instead — simpler, but strictly more
+> permissive. To keep some sandboxing, the one mandatory change is dropping
+> `NoNewPrivileges=true`; you can leave `ProtectSystem=strict` and whitelist specific writable
+> dirs with `ReadWritePaths=` instead.
+
 ## Notes
 
 - `--pair` works without `bless` installed (the BLE import is deferred), so you can generate a
@@ -124,3 +176,4 @@ The compile is a one-time cost — pip caches the wheel for later installs.
   add `--experimental` to `bluetoothd`'s `ExecStart` (or `Experimental = true` in
   `/etc/bluetooth/main.conf`), then `sudo systemctl restart bluetooth`.
 - Run as a non-root user in the `bluetooth` group; the daemon spawns the shell as that user.
+  See **Privileges & sudo** above to let the agent run privileged commands.

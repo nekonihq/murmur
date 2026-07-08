@@ -34,6 +34,15 @@ docs/          PLAN.md and design notes
 PROTOCOL.md    the wire protocol — single source of truth for both sides
 ```
 
+## Security
+
+`murmurd` runs the shell as a **non-root** user, and the sample systemd unit is hardened
+(`NoNewPrivileges`, `ProtectSystem=strict`). The agent can run `sudo` — the app sends the
+password over the encrypted link — **only if** the service is configured to permit privilege
+escalation; the hardened default blocks it. See
+[`daemon/README.md`](./daemon/README.md#privileges--sudo) for how (and the tradeoff: whoever
+can pair a phone then effectively has root on the Pi).
+
 ## Status
 
 Early development. See [`docs/PLAN.md`](./docs/PLAN.md) for the design and build order.

@@ -31,6 +31,13 @@ Restart=on-failure
 RestartSec=2
 
 # Hardening
+# NOTE: this blocks the agent from running `sudo`. NoNewPrivileges sets the
+# kernel no_new_privs bit, under which setuid binaries (sudo) can't elevate; and
+# ProtectSystem/ProtectHome make the filesystem read-only. To let the agent run
+# privileged commands, drop NoNewPrivileges and relax ProtectSystem/ProtectHome
+# (ProtectSystem=no / ProtectHome=no), add a sudoers entry for this user, and
+# set the sudo password in the app. This effectively grants root to anyone who
+# can pair a phone — see daemon/README.md → "Privileges & sudo".
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/home/murmur/.config/murmur

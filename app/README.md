@@ -19,9 +19,10 @@ src/
   crypto/       sha256 + hmac (auth) + base64 — dependency-free, RFC-vector tested
   ble/          react-native-ble-plx transport (transport.ts)
   client.ts     connection + auth handshake + sessions + flow-control credits
-  agent/        provider-agnostic agent loop (loop.ts) + types
+  agent/        provider-agnostic agent loop (loop.ts) + types + saved-chat history UI (History.tsx)
   providers/    Anthropic (default), OpenAI, Gemini adapters
-  storage/      expo-secure-store for the BLE PSK and BYO API keys
+  storage/      expo-secure-store for the BLE PSK + BYO API keys;
+                expo-file-system for persisted agent conversations (conversations.ts)
   terminal/     xterm.js-in-WebView terminal
   screens/      presentational Shell / Agent / Settings (consumed by routes)
   theme.ts      light + dark palettes (system default, user-overridable)
@@ -125,8 +126,9 @@ BLE permissions are declared in `app.json` (the `react-native-ble-plx` config pl
 iOS `NSBluetoothAlwaysUsageDescription` and the Android `BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT`
 entries during prebuild) — no manual `Info.plist`/`AndroidManifest.xml` editing.
 
-> `app.json` ships without `extra.eas.projectId` / `updates.url`; `eas init` +
-> `eas update:configure` add them for your EAS project.
+> `app.json` now carries `extra.eas.projectId` (added by `eas init`), but still ships without
+> `updates.url` — OTA isn't wired up yet, so JS-only changes currently need a full build. Run
+> `eas update:configure` to enable over-the-air updates.
 
 ## Pairing
 
