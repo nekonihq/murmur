@@ -43,6 +43,17 @@ export interface LLMProvider {
   next(systemPrompt: string, turns: Turn[], signal?: AbortSignal): Promise<ProviderTurn>;
 }
 
+/**
+ * One rendered line in the agent chat transcript. This is the *display* model
+ * (what the UI shows), distinct from {@link Turn} (what the model sees). Both
+ * are persisted with a conversation so a reopened chat renders exactly as it
+ * did and can still be resumed with full model context.
+ */
+export interface ChatLine {
+  kind: "user" | "assistant" | "command" | "result" | "denied" | "error" | "note";
+  text: string;
+}
+
 /** Events emitted by the agent loop for the UI to render. */
 export type AgentEvent =
   | { type: "assistant"; text: string }
