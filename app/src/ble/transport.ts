@@ -2,7 +2,7 @@
 // connects, negotiates MTU, and exchanges raw frame bytes on the three
 // characteristics. Framing/auth/sessions live one layer up in `client.ts`.
 
-import { BleManager, Device, type Subscription } from "react-native-ble-plx";
+import { BleManager, Device, State, type Subscription } from "react-native-ble-plx";
 
 import { toBase64, fromBase64 } from "../crypto/base64.ts";
 import { log } from "../log.ts";
@@ -43,14 +43,45 @@ export class BleTransport {
 
   /** Scan for murmur peripherals, invoking `onFound` for each unique device. */
   scan(onFound: (d: DiscoveredDevice) => void, onError: (e: Error) => void): () => void {
-    this.manager.startDeviceScan([SERVICE_UUID], null, (error, device) => {
-      if (error) {
-        onError(error);
-        return;
+    let scanning = false;
+    const startScan = () => {
+      if (scanning) return;
+      scanning = true;
+      this.manager.startDeviceScan([SERVICE_UUID], null, (error, device) => {
+        if (error) {
+          onError(error);
+          return;
+        }
+        if (device) onFound({ id: device.id, name: device.name });
+      });
+    };
+
+    // Don't scan until the adapter has settled — iOS starts in `Unknown` and
+    // only resolves (and shows the permission prompt) a moment later; scanning
+    // early throws "BluetoothLE is in unknown state". `true` emits the current
+    // state immediately so we start as soon as it's already on.
+    const sub = this.manager.onStateChange((state) => {
+      switch (state) {
+        case State.PoweredOn:
+          startScan();
+          break;
+        case State.PoweredOff:
+          onError(new Error("Bluetooth is off — turn it on to find your Pi."));
+          break;
+        case State.Unauthorized:
+          onError(new Error("Bluetooth permission is off for murmur. Enable it in Settings."));
+          break;
+        case State.Unsupported:
+          onError(new Error("This device doesn't support Bluetooth LE."));
+          break;
+        // Unknown / Resetting are transient — keep waiting for the next change.
       }
-      if (device) onFound({ id: device.id, name: device.name });
-    });
-    return () => this.manager.stopDeviceScan();
+    }, true);
+
+    return () => {
+      sub.remove();
+      this.manager.stopDeviceScan();
+    };
   }
 
   negotiatedMtu(): number {
