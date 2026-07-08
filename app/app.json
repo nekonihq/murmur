@@ -10,7 +10,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.nekoni.murmur",
-      "appleTeamId": "5937UUXFCY"
+      "appleTeamId": "5937UUXFCY",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.nekoni.murmur",
@@ -44,10 +47,14 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "dc53b116-42f5-41f8-86a4-2098ea002c3b"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "owner": "malykhin"
   }
 }
