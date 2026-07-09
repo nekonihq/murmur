@@ -135,6 +135,19 @@ entries during prebuild) — no manual `Info.plist`/`AndroidManifest.xml` editin
 On the Pi: `murmurd --pair` prints a base64 key. In the app's Devices screen, pick your Pi and
 paste that key once; it's stored in the device keychain and reused on every reconnect.
 
+## Data & privacy
+
+Everything the app stores stays on the phone: pairing keys and BYO API keys live in the OS
+secure store (iOS Keychain / Android Keystore); saved agent conversations are JSON files in the
+app's private document directory. Nothing is uploaded except the LLM calls you make with your
+own key. Manage it all from **Settings → Data**:
+
+- **Forget this device** — drops the connected Pi's pairing key; you re-pair to reconnect.
+- **Clear conversation history** — deletes all saved agent chats (also available as *Clear all*
+  in the Agent tab's History sheet).
+- **Delete all data** — wipes every pairing key, API key, the sudo password, agent history, and
+  preferences from the phone.
+
 ## Notes
 
 - Imports use explicit `.ts`/`.tsx` extensions so Node's test runner resolves them; `tsconfig`

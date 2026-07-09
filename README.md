@@ -11,7 +11,8 @@ Two halves:
   modes:
   - **Shell mode** — a real interactive terminal (xterm.js).
   - **Agent mode** — a chat UI where an LLM drives the shell for you, using **your own API
-    keys** (bring-your-own) for Anthropic Claude, OpenAI, or Google Gemini.
+    keys** (bring-your-own) for Anthropic Claude, OpenAI, or Google Gemini. Conversations are
+    saved on the phone so you can revisit and resume past sessions.
 
 The AI agent loop runs **on the phone**: the phone holds the API keys and the internet
 connection, calls the LLM, and ships the resulting commands to the Pi over BLE. The Pi never
