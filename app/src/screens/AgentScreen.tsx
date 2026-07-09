@@ -255,18 +255,22 @@ export function AgentScreen({ client, provider }: Props) {
         {running && <ThinkingIndicator colors={colors} />}
       </ScrollView>
 
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, marginTop: 8 }}>
         <TextInput
           value={input}
           onChangeText={setInput}
           placeholder="Describe what to do on the Pi…"
           placeholderTextColor={colors.textMid}
+          multiline
           style={{
             flex: 1,
+            minHeight: 44,
+            maxHeight: 140,
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 8,
-            padding: 10,
+            paddingHorizontal: 10,
+            paddingVertical: 10,
             color: colors.textHigh,
             backgroundColor: colors.surface,
           }}
@@ -275,6 +279,7 @@ export function AgentScreen({ client, provider }: Props) {
           onPress={running ? stop : submit}
           style={{
             backgroundColor: running ? colors.danger : colors.accent,
+            height: 44,
             paddingHorizontal: 16,
             justifyContent: "center",
             borderRadius: 8,
