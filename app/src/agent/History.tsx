@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   listConversations,
   deleteConversation,
+  deleteAllConversations,
   type ConversationMeta,
 } from "../storage/conversations.ts";
 import type { ThemeColors } from "../theme.ts";
@@ -33,10 +34,20 @@ interface Props {
   onOpen: (id: string) => void;
   /** A conversation was deleted; the agent screen resets if it was the open one. */
   onDeleted: (id: string) => void;
+  /** All conversations were cleared; the agent screen resets to a blank chat. */
+  onClearedAll: () => void;
   colors: ThemeColors;
 }
 
-export function HistoryModal({ visible, onClose, currentId, onOpen, onDeleted, colors }: Props) {
+export function HistoryModal({
+  visible,
+  onClose,
+  currentId,
+  onOpen,
+  onDeleted,
+  onClearedAll,
+  colors,
+}: Props) {
   const [items, setItems] = useState<ConversationMeta[] | null>(null);
 
   const refresh = useCallback(() => {
@@ -48,6 +59,25 @@ export function HistoryModal({ visible, onClose, currentId, onOpen, onDeleted, c
   useEffect(() => {
     if (visible) refresh();
   }, [visible, refresh]);
+
+  function confirmClearAll() {
+    Alert.alert(
+      "Clear all history?",
+      "Deletes every saved conversation. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear all",
+          style: "destructive",
+          onPress: async () => {
+            await deleteAllConversations();
+            onClearedAll();
+            refresh();
+          },
+        },
+      ],
+    );
+  }
 
   function confirmDelete(item: ConversationMeta) {
     Alert.alert("Delete conversation?", `"${item.title}" will be removed permanently.`, [
@@ -93,6 +123,11 @@ export function HistoryModal({ visible, onClose, currentId, onOpen, onDeleted, c
           <Text style={{ flex: 1, fontSize: 18, fontWeight: "600", color: colors.textHigh }}>
             History
           </Text>
+          {items && items.length > 0 && (
+            <TouchableOpacity onPress={confirmClearAll} hitSlop={8} style={{ marginRight: 16 }}>
+              <Text style={{ color: colors.danger, fontSize: 15 }}>Clear all</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={onClose} hitSlop={8}>
             <Ionicons name="close" size={24} color={colors.textMid} />
           </TouchableOpacity>

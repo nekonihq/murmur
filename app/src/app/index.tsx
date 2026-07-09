@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { BleTransport, type DiscoveredDevice } from "../ble/transport.ts";
 import { useConnection } from "../ConnectionContext.tsx";
@@ -50,8 +51,39 @@ export default function DevicesRoute() {
   if (busy) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={styles.dim}>Connecting…</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={styles.scanTitle}>Connecting…</Text>
+      </View>
+    );
+  }
+
+  // No devices yet: a friendly full-screen scanning (or error) state instead of
+  // a lone line of text.
+  if (devices.length === 0) {
+    return (
+      <View style={styles.center}>
+        {error ? (
+          <>
+            <Ionicons name="bluetooth-outline" size={44} color={colors.danger} />
+            <Text style={styles.scanTitle}>Can’t scan</Text>
+            <Text style={styles.error}>{error}</Text>
+            <Text style={styles.scanHint}>Check that Bluetooth is on and permission is granted.</Text>
+          </>
+        ) : (
+          <>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={styles.scanTitle}>Scanning for nearby Pis…</Text>
+            <Text style={styles.scanHint}>
+              Make sure your Pi is powered on and running murmurd.
+            </Text>
+            <Ionicons
+              name="bluetooth-outline"
+              size={40}
+              color={colors.textMid}
+              style={{ marginTop: 24 }}
+            />
+          </>
+        )}
       </View>
     );
   }
@@ -62,7 +94,13 @@ export default function DevicesRoute() {
       <FlatList
         data={devices}
         keyExtractor={(d) => d.id}
-        ListEmptyComponent={<Text style={styles.dim}>Scanning for nearby Pis…</Text>}
+        ListHeaderComponent={<Text style={styles.listHeader}>Nearby devices</Text>}
+        ListFooterComponent={
+          <View style={styles.scanFooter}>
+            <ActivityIndicator color={colors.textMid} />
+            <Text style={styles.dim}>Scanning…</Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.row} onPress={() => onPick(item)}>
             <Text style={styles.name}>{item.name ?? "(unnamed)"}</Text>
@@ -77,10 +115,20 @@ export default function DevicesRoute() {
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
-    center: { flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" },
+    center: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 32,
+    },
     row: { paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border },
     name: { fontSize: 16, color: colors.textHigh },
     id: { fontSize: 12, color: colors.textMid },
-    dim: { color: colors.textMid, marginTop: 12 },
-    error: { color: colors.danger, marginBottom: 8 },
+    dim: { color: colors.textMid },
+    listHeader: { color: colors.textMid, fontSize: 13, fontWeight: "600", marginBottom: 4 },
+    scanTitle: { color: colors.textHigh, fontSize: 17, fontWeight: "600", marginTop: 16 },
+    scanHint: { color: colors.textMid, fontSize: 14, textAlign: "center", marginTop: 8, lineHeight: 20 },
+    scanFooter: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", paddingVertical: 20 },
+    error: { color: colors.danger, textAlign: "center", marginTop: 8 },
   });

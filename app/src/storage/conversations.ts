@@ -104,3 +104,13 @@ export async function deleteConversation(id: string): Promise<void> {
     log("history", "delete failed", id, e);
   }
 }
+
+/** Delete every saved conversation by removing the whole directory. */
+export async function deleteAllConversations(): Promise<void> {
+  try {
+    const d = dir();
+    if (d.exists) d.delete();
+  } catch (e) {
+    log("history", "delete-all failed", e);
+  }
+}

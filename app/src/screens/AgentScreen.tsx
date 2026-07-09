@@ -244,6 +244,7 @@ export function AgentScreen({ client, provider }: Props) {
         currentId={convIdRef.current}
         onOpen={openConversation}
         onDeleted={handleDeleted}
+        onClearedAll={reset}
         colors={colors}
       />
 

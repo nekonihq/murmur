@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { useConnection } from "../ConnectionContext.tsx";
 import { useTheme } from "../ThemeContext.tsx";
-import { savePsk, loadPsk } from "../storage/keys.ts";
+import { savePsk, loadPsk, rememberDevice } from "../storage/keys.ts";
 import type { ThemeColors } from "../theme.ts";
 
 export default function PairRoute() {
@@ -27,6 +27,7 @@ export default function PairRoute() {
       await savePsk(deviceId, trimmed);
       const bytes = await loadPsk(deviceId);
       if (!bytes) throw new Error("could not store key");
+      await rememberDevice(deviceId, name ?? "");
       await connectWithPsk(deviceId, bytes);
       router.replace("/(tabs)/shell");
     } catch (e) {

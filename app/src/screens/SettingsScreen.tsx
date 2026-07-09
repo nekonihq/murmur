@@ -12,8 +12,10 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
+import { useRouter } from "expo-router";
 
 import {
   DEFAULT_MODELS,
@@ -29,8 +31,12 @@ import {
   saveSystemPrompt,
   loadSudoPassword,
   saveSudoPassword,
+  forgetDevice,
+  deleteAllData,
 } from "../storage/keys.ts";
+import { deleteAllConversations } from "../storage/conversations.ts";
 import { DEFAULT_SYSTEM_PROMPT } from "../agent/types.ts";
+import { useConnection } from "../ConnectionContext.tsx";
 import { useTheme } from "../ThemeContext.tsx";
 import type { ThemeColors, ThemeMode } from "../theme.ts";
 
@@ -47,6 +53,8 @@ interface Props {
 
 export function SettingsScreen({ onChanged }: Props) {
   const { colors, mode, setMode } = useTheme();
+  const { deviceId, disconnect } = useConnection();
+  const router = useRouter();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const headerHeight = useHeaderHeight();
   const [selected, setSelected] = useState<ProviderId>("anthropic");
@@ -86,6 +94,69 @@ export function SettingsScreen({ onChanged }: Props) {
     await saveSudoPassword(sudoPassword);
     setSaved(true);
     onChanged?.();
+  }
+
+  // Drop the current Pi's pairing key and return to the device list. Requires
+  // re-pairing to reconnect.
+  function forgetThisDevice() {
+    const id = deviceId;
+    if (!id) return;
+    Alert.alert(
+      "Forget this device?",
+      "Removes its pairing key from this phone. You'll need to pair again to reconnect.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Forget",
+          style: "destructive",
+          onPress: async () => {
+            await forgetDevice(id);
+            await disconnect(); // client goes null → tabs redirect to the device list
+          },
+        },
+      ],
+    );
+  }
+
+  function clearHistory() {
+    Alert.alert(
+      "Clear conversation history?",
+      "Deletes all saved agent conversations from this phone. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => void deleteAllConversations(),
+        },
+      ],
+    );
+  }
+
+  // Nuke everything: pairings, API keys, sudo password, prompt, history, prefs.
+  function deleteEverything() {
+    Alert.alert(
+      "Delete all data?",
+      "Erases all pairings, API keys, the sudo password, agent history, and preferences from this phone. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete everything",
+          style: "destructive",
+          onPress: async () => {
+            await deleteAllData();
+            setMode("system");
+            setApiKey("");
+            setModel("");
+            setSystemPrompt("");
+            setSudoPassword("");
+            onChanged?.(); // provider is gone now
+            await disconnect(); // → device list
+            router.replace("/");
+          },
+        },
+      ],
+    );
   }
 
   return (
@@ -202,6 +273,18 @@ export function SettingsScreen({ onChanged }: Props) {
         <Text style={styles.buttonText}>Save</Text>
       </TouchableOpacity>
       {saved && <Text style={styles.savedText}>Saved.</Text>}
+
+      <Text style={[styles.heading, styles.dangerHeading]}>Data</Text>
+      {deviceId && (
+        <DangerButton styles={styles} label="Forget this device" onPress={forgetThisDevice} />
+      )}
+      <DangerButton styles={styles} label="Clear conversation history" onPress={clearHistory} />
+      <DangerButton
+        styles={styles}
+        label="Delete all data"
+        onPress={deleteEverything}
+        filled
+      />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -221,6 +304,29 @@ function Chip({
   return (
     <TouchableOpacity onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// A destructive action. `filled` makes it a solid red button (for the most
+// severe action); otherwise it's an outlined red button.
+function DangerButton({
+  styles,
+  label,
+  onPress,
+  filled,
+}: {
+  styles: ReturnType<typeof createStyles>;
+  label: string;
+  onPress: () => void;
+  filled?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.dangerButton, filled ? styles.dangerButtonFilled : styles.dangerButtonOutline]}
+    >
+      <Text style={filled ? styles.dangerButtonFilledText : styles.dangerButtonText}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -268,4 +374,10 @@ const createStyles = (colors: ThemeColors) =>
     button: { backgroundColor: colors.accent, padding: 12, borderRadius: 8 },
     buttonText: { color: colors.accentText, textAlign: "center" },
     savedText: { color: colors.success, marginTop: 8, textAlign: "center" },
+    dangerHeading: { marginTop: 36, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 20 },
+    dangerButton: { padding: 12, borderRadius: 8, marginBottom: 10 },
+    dangerButtonOutline: { borderWidth: 1, borderColor: colors.danger },
+    dangerButtonFilled: { backgroundColor: colors.danger },
+    dangerButtonText: { color: colors.danger, textAlign: "center", fontWeight: "600" },
+    dangerButtonFilledText: { color: colors.accentText, textAlign: "center", fontWeight: "600" },
   });
