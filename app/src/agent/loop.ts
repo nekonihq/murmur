@@ -6,6 +6,7 @@
 
 import type { ExecResult } from "../protocol/messages.ts";
 import {
+  type AgentError,
   type AgentEvent,
   type LLMProvider,
   type ToolResult,
@@ -89,6 +90,9 @@ export async function* runAgent(
   // Continue the caller's transcript (mutated in place) so context carries
   // across questions; fall back to a fresh one when no history is supplied.
   const turns: Turn[] = options.history ?? [];
+  // Snapshot the last known-good length so a failed *first* call can be rolled
+  // back to it (see below).
+  const goodLen = turns.length;
   // Repair a transcript left dangling by a prior hard stop before appending the
   // new turn, so continuing (or resuming a saved chat) can't send a malformed
   // request.
@@ -108,7 +112,15 @@ export async function* runAgent(
         yield { type: "stopped" };
         return;
       }
-      yield { type: "error", message: errMessage(e) };
+      // If the very first call fails (the common case: the provider's content
+      // filter rejects the reply to the new message), the goal we just appended
+      // — and any healing seal — would otherwise stay in the transcript, so
+      // every later message resends the rejected content and hits the same wall,
+      // bricking the conversation. Roll back to the last good state so the user
+      // can retry, rephrase, or ask something else cleanly. Later steps already
+      // committed real work and ended on a valid tool turn, so those are kept.
+      if (step === 0) turns.length = goodLen;
+      yield { type: "error", error: toAgentError(e) };
       return;
     }
 
@@ -173,10 +185,38 @@ export async function* runAgent(
 
   yield {
     type: "error",
-    message: `agent stopped after reaching the ${maxSteps}-step limit`,
+    error: {
+      kind: "step_limit",
+      title: "Step limit reached",
+      detail:
+        `The agent stopped after ${maxSteps} steps to avoid running forever. ` +
+        "If it was on the right track, ask it to continue.",
+      retryable: false,
+    },
   };
 }
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Normalize any thrown value into an {@link AgentError}. Provider adapters throw
+ * a `ProviderError` carrying a pre-classified `agentError`; we read it by duck
+ * typing so this transport-agnostic loop needn't depend on the providers layer.
+ * Anything else (an unexpected bug) becomes a generic, retryable error.
+ */
+function toAgentError(e: unknown): AgentError {
+  const carried = (e as { agentError?: AgentError } | null | undefined)?.agentError;
+  if (carried && typeof carried === "object" && typeof carried.title === "string") {
+    return carried;
+  }
+  const msg = errMessage(e);
+  return {
+    kind: "unknown",
+    title: "Something went wrong",
+    detail: msg,
+    retryable: true,
+    raw: msg,
+  };
 }

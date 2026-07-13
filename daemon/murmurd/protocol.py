@@ -1,7 +1,7 @@
 """murmur wire protocol — framing layer (Python).
 
-Byte-compatible with ``daemon-rust/src/protocol`` and ``app/src/protocol``.
-See ``PROTOCOL.md``. A :class:`Frame` is one GATT write/notification: an 8-byte
+Byte-compatible with ``app/src/protocol`` (TypeScript). See ``PROTOCOL.md``.
+A :class:`Frame` is one GATT write/notification: an 8-byte
 big-endian header followed by ``len`` payload bytes. Logical messages larger
 than one frame are split with the ``FRAG_MORE`` flag (:func:`fragment`) and
 rebuilt by :class:`Reassembler`.

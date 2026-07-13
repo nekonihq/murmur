@@ -15,12 +15,14 @@ src/
                   (tabs)/_layout.tsx Shell / Agent / Settings tabs
                   (tabs)/{shell,agent,settings}.tsx
   ConnectionContext.tsx   active MurmurClient + provider, shared across tabs
+  ThemeContext.tsx        light/dark/system theme, shared across screens
   protocol/     TypeScript mirror of PROTOCOL.md (frame.ts, messages.ts)
   crypto/       sha256 + hmac (auth) + base64 — dependency-free, RFC-vector tested
   ble/          react-native-ble-plx transport (transport.ts)
   client.ts     connection + auth handshake + sessions + flow-control credits
-  agent/        provider-agnostic agent loop (loop.ts) + types + saved-chat history UI (History.tsx)
-  providers/    Anthropic (default), OpenAI, Gemini adapters
+  agent/        provider-agnostic agent loop (loop.ts) + types + Markdown rendering
+                (Markdown.tsx) + saved-chat history UI (History.tsx)
+  providers/    Anthropic (default), OpenAI, Gemini adapters + shared error handling (common.ts)
   storage/      expo-secure-store for the BLE PSK + BYO API keys;
                 expo-file-system for persisted agent conversations (conversations.ts)
   terminal/     xterm.js-in-WebView terminal
@@ -34,7 +36,7 @@ The pure-logic modules (protocol, crypto, agent loop) run under Node 24's native
 support — no build step:
 
 ```sh
-npm test     # node --test "src/**/*.test.ts"
+pnpm test     # or npm test — node --test "src/**/*.test.ts"
 ```
 
 These include a golden frame vector that must match the daemon's encoding, and RFC 4231

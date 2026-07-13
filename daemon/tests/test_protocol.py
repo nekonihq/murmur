@@ -16,7 +16,7 @@ from murmurd.protocol import (
 
 
 class TestProtocol(unittest.TestCase):
-    def test_golden_vector_matches_rust_and_ts(self):
+    def test_golden_vector_matches_ts(self):
         # ver=1, DATA(0x12), session=7, flags=STREAM_ERR(0x02), seq=0x1234, len=2, "hi"
         frame = Frame(Opcode.DATA, 7, STREAM_ERR, 0x1234, b"hi")
         self.assertEqual(

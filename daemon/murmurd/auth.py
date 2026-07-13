@@ -1,5 +1,5 @@
 """App-layer authentication: per-connection HMAC challenge/response over a
-pre-shared key. Byte-compatible with the Rust/TS sides (standard HMAC-SHA256)."""
+pre-shared key. Byte-compatible with the TS side (standard HMAC-SHA256)."""
 
 from __future__ import annotations
 

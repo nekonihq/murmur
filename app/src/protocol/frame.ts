@@ -1,7 +1,7 @@
-// murmur wire protocol — TypeScript mirror of `daemon/src/protocol`.
+// murmur wire protocol — TypeScript mirror of `daemon/murmurd/protocol.py`.
 //
 // This is the app side of `PROTOCOL.md`. It must stay byte-compatible with the
-// Rust implementation. Uses plain `Uint8Array` and `const` maps (no TS `enum`,
+// Python implementation. Uses plain `Uint8Array` and `const` maps (no TS `enum`,
 // so the file runs directly under Node's type-stripping and React Native).
 
 export const PROTO_VERSION = 1;
@@ -146,7 +146,7 @@ export interface Message {
 
 /**
  * Rebuilds logical {@link Message}s from frames on one characteristic.
- * Accumulates per `(sessionId, opcode)` key, mirroring the Rust `Reassembler`.
+ * Accumulates per `(sessionId, opcode)` key, mirroring the Python `Reassembler`.
  */
 export class Reassembler {
   private partial = new Map<string, number[]>();

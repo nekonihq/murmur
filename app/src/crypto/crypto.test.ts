@@ -1,7 +1,7 @@
 // Run with: node --test src/crypto/crypto.test.ts
 //
-// These vectors guarantee the app's auth response matches what the Rust daemon
-// computes with the `hmac`/`sha2` crates — the same standard HMAC-SHA256.
+// These vectors guarantee the app's auth response matches what the Python daemon
+// computes with `hmac`/`hashlib` — the same standard HMAC-SHA256.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

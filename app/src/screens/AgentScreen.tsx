@@ -20,7 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { MurmurClient } from "../client.ts";
 import { runAgent } from "../agent/loop.ts";
 import { formatResult } from "../providers/common.ts";
-import type { ChatLine, LLMProvider, Turn } from "../agent/types.ts";
+import type { AgentError, ChatLine, LLMProvider, Turn } from "../agent/types.ts";
 import { loadSystemPrompt, loadSudoPassword } from "../storage/keys.ts";
 import {
   saveConversation,
@@ -58,6 +58,9 @@ export function AgentScreen({ client, provider }: Props) {
   const convIdRef = useRef<string | null>(null);
   const createdAtRef = useRef<number>(0);
   const titleRef = useRef<string>("");
+  // The most recent goal, kept so a failed run can be re-sent with one tap
+  // without the user retyping it.
+  const lastGoalRef = useRef<string>("");
   const { colors } = useTheme();
   const headerHeight = useHeaderHeight();
 
@@ -67,6 +70,11 @@ export function AgentScreen({ client, provider }: Props) {
       linesRef.current = next;
       return next;
     });
+
+  // Scroll after the pushed line has been laid out, otherwise scrollToEnd
+  // measures the content height from before it was added and lands short.
+  const scrollToBottom = (animated = true) =>
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated }), 0);
 
   // Write the current chat (rendered lines + model transcript) to disk. No-op
   // until a conversation id has been allocated (i.e. after the first message).
@@ -87,10 +95,42 @@ export function AgentScreen({ client, provider }: Props) {
     const goal = input.trim();
     if (!goal || running) return;
     if (!provider) {
-      push({ kind: "error", text: "No LLM provider configured — set an API key in Settings." });
+      push({
+        kind: "error",
+        text: "No provider configured",
+        error: {
+          kind: "auth",
+          title: "No LLM provider configured",
+          detail: "Set an API key in Settings to start chatting.",
+          retryable: false,
+        },
+      });
       return;
     }
     setInput("");
+    await runGoal(goal, { echoUser: true });
+  }
+
+  // Re-send the last goal after a failure. The user's bubble is already on
+  // screen, so we drop the trailing error line and re-run without echoing a new
+  // one. A failed first call rolled the transcript back to its last-good state,
+  // so this retry is clean (no compounding of the rejected content).
+  async function retry() {
+    if (running || !provider || !lastGoalRef.current) return;
+    setLines((prev) => {
+      const next = prev.at(-1)?.kind === "error" ? prev.slice(0, -1) : prev.slice();
+      linesRef.current = next;
+      return next;
+    });
+    await runGoal(lastGoalRef.current, { echoUser: false });
+  }
+
+  // Drive one agent run for `goal`, streaming its events into the chat. With
+  // `echoUser`, a user bubble is pushed first (a fresh message); a retry passes
+  // false because that bubble is already present.
+  async function runGoal(goal: string, { echoUser }: { echoUser: boolean }) {
+    if (!provider) return;
+    lastGoalRef.current = goal;
     // First message of a fresh chat allocates its persistent identity; the
     // title is taken from this opening goal and kept for the rest of the chat.
     if (!convIdRef.current) {
@@ -98,7 +138,10 @@ export function AgentScreen({ client, provider }: Props) {
       createdAtRef.current = Date.now();
       titleRef.current = titleFromGoal(goal);
     }
-    push({ kind: "user", text: goal });
+    if (echoUser) {
+      push({ kind: "user", text: goal });
+      scrollToBottom();
+    }
     setRunning(true);
     // Read prompt + sudo password fresh each run so edits in Settings take
     // effect without remounting; undefined prompt falls back to the default.
@@ -110,6 +153,12 @@ export function AgentScreen({ client, provider }: Props) {
     // the secret off the wire otherwise.
     const runCommand = (cmd: string, t?: number) =>
       client.exec(cmd, t, USES_SUDO.test(cmd) ? sudoPassword : undefined, controller.signal);
+    // Track whether the run got past the first LLM call. If it errors without
+    // producing anything, the loop rolled the failed turn out of `turns` — so we
+    // roll the echoed user bubble out of the display too, keeping the transcript
+    // and the on-screen chat in lockstep (drop-last-exchange relies on this).
+    let producedContent = false;
+    let errored = false;
     try {
       for await (const ev of runAgent(provider, goal, runCommand, {
         systemPrompt,
@@ -119,32 +168,85 @@ export function AgentScreen({ client, provider }: Props) {
         switch (ev.type) {
           case "assistant":
             push({ kind: "assistant", text: ev.text });
+            producedContent = true;
             break;
           case "command":
             push({ kind: "command", text: ev.command });
+            producedContent = true;
             break;
           case "command_denied":
             push({ kind: "denied", text: ev.command });
+            producedContent = true;
             break;
           case "result":
             push({ kind: "result", text: formatResult(ev.result) });
+            producedContent = true;
             break;
           case "stopped":
             push({ kind: "note", text: "Stopped." });
+            producedContent = true;
             break;
           case "error":
-            push({ kind: "error", text: ev.message });
+            push({ kind: "error", text: ev.error.title, error: ev.error });
+            errored = true;
             break;
         }
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 0);
+        scrollToBottom();
       }
     } finally {
+      if (errored && !producedContent && echoUser) {
+        // Remove the echoed user bubble (now the second-to-last line, before the
+        // error) so the display no longer shows a message the model never kept.
+        setLines((prev) => {
+          const next = prev.slice();
+          if (next.length >= 2 && next[next.length - 2].kind === "user") {
+            next.splice(next.length - 2, 1);
+          }
+          linesRef.current = next;
+          return next;
+        });
+      }
       setRunning(false);
       abortRef.current = null;
       // Save the conversation (including any partial progress if it was
       // stopped or errored) so it survives relaunch and shows up in history.
       void persist();
     }
+  }
+
+  // Back out of a wedged conversation: drop the most recent exchange (the last
+  // user message and everything the agent produced answering it) from BOTH the
+  // model transcript and the display. A content-filter block depends on the
+  // surrounding context, so removing the exchange that carries the flagged
+  // content lets the chat continue instead of hitting the same wall forever.
+  // Repeatable — each block offers it again, so the user can walk back as far as
+  // needed.
+  function dropLastExchange() {
+    if (running) return;
+    const turns = turnsRef.current;
+    let turnCut = -1;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].role === "user") {
+        turnCut = i;
+        break;
+      }
+    }
+    if (turnCut < 0) return; // nothing to remove
+    turnsRef.current = turns.slice(0, turnCut);
+
+    setLines((prev) => {
+      let lineCut = -1;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].kind === "user") {
+          lineCut = i;
+          break;
+        }
+      }
+      const next = lineCut < 0 ? [] : prev.slice(0, lineCut);
+      linesRef.current = next;
+      return next;
+    });
+    void persist();
   }
 
   function stop() {
@@ -184,7 +286,7 @@ export function AgentScreen({ client, provider }: Props) {
     turnsRef.current = conv.turns;
     linesRef.current = conv.lines;
     setLines(conv.lines);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 0);
+    scrollToBottom(false);
   }
 
   // A conversation was deleted from the history list. If it's the one on
@@ -249,9 +351,26 @@ export function AgentScreen({ client, provider }: Props) {
       />
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }}>
-        {lines.map((l, i) => (
-          <LineView key={i} line={l} colors={colors} />
-        ))}
+        {lines.map((l, i) => {
+          // Recovery actions live only on the last line, and only while idle, so
+          // an old error buried in the transcript doesn't sprout stale buttons.
+          const isLast = i === lines.length - 1 && !running;
+          // "Remove last exchange" only helps context-driven blocks — offer it
+          // for those, when there's actually an exchange to drop.
+          const contextBlock =
+            l.error?.kind === "content_filter" || l.error?.kind === "invalid_request";
+          return (
+            <LineView
+              key={i}
+              line={l}
+              colors={colors}
+              onRetry={isLast ? retry : undefined}
+              onRemoveLast={
+                isLast && contextBlock && turnsRef.current.length > 0 ? dropLastExchange : undefined
+              }
+            />
+          );
+        })}
         {running && <ThinkingIndicator colors={colors} />}
       </ScrollView>
 
@@ -293,7 +412,17 @@ export function AgentScreen({ client, provider }: Props) {
   );
 }
 
-function LineView({ line, colors }: { line: ChatLine; colors: ThemeColors }) {
+function LineView({
+  line,
+  colors,
+  onRetry,
+  onRemoveLast,
+}: {
+  line: ChatLine;
+  colors: ThemeColors;
+  onRetry?: () => void;
+  onRemoveLast?: () => void;
+}) {
   switch (line.kind) {
     case "user":
       return (
@@ -314,7 +443,15 @@ function LineView({ line, colors }: { line: ChatLine; colors: ThemeColors }) {
     case "denied":
       return <Mono prefix="denied: " text={line.text} bg={colors.codeBg} fg={colors.warn} />;
     case "error":
-      return <Text style={{ color: colors.danger, marginVertical: 4 }}>{line.text}</Text>;
+      return (
+        <ErrorCard
+          error={line.error}
+          fallback={line.text}
+          colors={colors}
+          onRetry={onRetry}
+          onRemoveLast={onRemoveLast}
+        />
+      );
     case "note":
       return (
         <Text style={{ color: colors.textMid, marginVertical: 6, textAlign: "center", fontSize: 13 }}>
@@ -322,6 +459,121 @@ function LineView({ line, colors }: { line: ChatLine; colors: ThemeColors }) {
         </Text>
       );
   }
+}
+
+const ERROR_ICONS: Record<AgentError["kind"], keyof typeof Ionicons.glyphMap> = {
+  content_filter: "shield-half-outline",
+  auth: "key-outline",
+  rate_limit: "hourglass-outline",
+  overloaded: "cloud-offline-outline",
+  invalid_request: "alert-circle-outline",
+  server: "cloud-offline-outline",
+  network: "wifi-outline",
+  timeout: "time-outline",
+  step_limit: "stop-circle-outline",
+  unknown: "alert-circle-outline",
+};
+
+/**
+ * A failure rendered as a bordered card: an icon + title, a plain-language
+ * explanation, a one-tap Retry when it might help, and the raw provider message
+ * tucked behind a "Details" toggle — instead of dumping an HTTP body in red.
+ */
+function ErrorCard({
+  error,
+  fallback,
+  colors,
+  onRetry,
+  onRemoveLast,
+}: {
+  error?: AgentError;
+  fallback: string;
+  colors: ThemeColors;
+  onRetry?: () => void;
+  onRemoveLast?: () => void;
+}) {
+  const [showRaw, setShowRaw] = useState(false);
+  // Older saved conversations stored errors as plain text; render those simply.
+  if (!error) {
+    return <Text style={{ color: colors.danger, marginVertical: 4 }}>{fallback}</Text>;
+  }
+  return (
+    <View
+      style={{
+        marginVertical: 6,
+        borderWidth: 1,
+        borderColor: colors.danger,
+        borderRadius: 10,
+        backgroundColor: colors.surface,
+        padding: 12,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Ionicons name={ERROR_ICONS[error.kind]} size={18} color={colors.danger} />
+        <Text style={{ color: colors.danger, fontWeight: "600", fontSize: 14, flex: 1 }}>
+          {error.title}
+        </Text>
+      </View>
+      <Text style={{ color: colors.textMid, fontSize: 13, marginTop: 6, lineHeight: 18 }}>
+        {error.detail}
+      </Text>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16, marginTop: 10 }}>
+        {onRemoveLast && (
+          <TouchableOpacity
+            onPress={onRemoveLast}
+            hitSlop={8}
+            style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+          >
+            <Ionicons name="arrow-undo" size={15} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
+              Remove last exchange
+            </Text>
+          </TouchableOpacity>
+        )}
+        {error.retryable && onRetry && (
+          <TouchableOpacity
+            onPress={onRetry}
+            hitSlop={8}
+            style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+          >
+            <Ionicons name="refresh" size={15} color={onRemoveLast ? colors.textMid : colors.accent} />
+            <Text
+              style={{
+                color: onRemoveLast ? colors.textMid : colors.accent,
+                fontSize: 13,
+                fontWeight: "600",
+              }}
+            >
+              Retry
+            </Text>
+          </TouchableOpacity>
+        )}
+        {error.raw && (
+          <TouchableOpacity onPress={() => setShowRaw((v) => !v)} hitSlop={8}>
+            <Text style={{ color: colors.textMid, fontSize: 13 }}>
+              {showRaw ? "Hide details" : "Details"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {showRaw && error.raw && (
+        <View
+          style={{
+            marginTop: 10,
+            backgroundColor: colors.codeBg,
+            borderRadius: 8,
+            padding: 8,
+          }}
+        >
+          <Text style={{ color: colors.codeFg, fontFamily: "monospace", fontSize: 11 }}>
+            {error.raw}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 const THINKING_WORDS = [

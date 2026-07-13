@@ -209,6 +209,64 @@ test("stops at maxSteps to prevent runaway loops", async () => {
   assert.equal(last.type, "error");
 });
 
+test("a failed first LLM call rolls the transcript back so the chat isn't poisoned", async () => {
+  // Prior good exchange the user built up before the failing message.
+  const history: Turn[] = [
+    { role: "user", text: "old" },
+    { role: "assistant", text: "sure", toolCalls: [] },
+  ];
+  const before = structuredClone(history);
+  const provider: LLMProvider = {
+    name: "fake",
+    model: "fake-1",
+    async next() {
+      // Simulate a content-filter block: a ProviderError-shaped throw.
+      throw Object.assign(new Error("blocked"), {
+        agentError: {
+          kind: "content_filter",
+          title: "Response blocked by the provider's content filter",
+          detail: "…",
+          retryable: true,
+        },
+      });
+    },
+  };
+
+  const events = await collect(runAgent(provider, "risky ask", async () => ok(""), { history }));
+
+  // The rejected message (and its user turn) must not linger — otherwise every
+  // later request resends it and hits the same wall.
+  assert.deepEqual(history, before);
+  const err = events.at(-1);
+  assert.equal(err?.type, "error");
+  assert.equal(err?.type === "error" && err.error.kind, "content_filter");
+  assert.equal(err?.type === "error" && err.error.retryable, true);
+});
+
+test("a failure after commands have run keeps the committed work in the transcript", async () => {
+  const history: Turn[] = [];
+  let call = 0;
+  const provider: LLMProvider = {
+    name: "fake",
+    model: "fake-1",
+    async next() {
+      call++;
+      if (call === 1) return { text: "checking", toolCalls: [{ id: "c1", command: "uname" }] };
+      throw Object.assign(new Error("boom"), {
+        agentError: { kind: "server", title: "Provider error", detail: "…", retryable: true },
+      });
+    },
+  };
+
+  const events = await collect(runAgent(provider, "go", async () => ok("Linux\n"), { history }));
+
+  assert.equal(events.at(-1)?.type, "error");
+  // The first step really ran a command; that work stays and the transcript
+  // ends on a valid tool turn (no dangling tool_use).
+  assert.equal(history.at(-1)?.role, "tool");
+  assert.ok(history.some((t) => t.role === "assistant"));
+});
+
 test("surfaces transport errors as a failed result, not a crash", async () => {
   const provider = scriptedProvider([
     { text: "", toolCalls: [{ id: "c1", command: "oops" }] },

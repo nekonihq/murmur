@@ -20,7 +20,7 @@ import {
   type SeqCounter,
 } from "./frame.ts";
 
-test("golden vector matches the Rust encoding", () => {
+test("golden vector matches the Python daemon's encoding", () => {
   // Must equal the bytes asserted in daemon `header_layout_is_eight_bytes`:
   // ver=1, opcode=Data(0x12), session=7, flags=STREAM_ERR(0x02), seq=0x1234, len=2, "hi"
   const frame: Frame = {

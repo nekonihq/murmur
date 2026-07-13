@@ -44,6 +44,44 @@ export interface LLMProvider {
 }
 
 /**
+ * Coarse classification of a failed run, so the UI can present each failure in
+ * plain language (and decide whether offering a one-tap retry makes sense)
+ * instead of dumping a raw HTTP body at the user.
+ *
+ * `content_filter` is the notable one: the provider's own safety system withheld
+ * the model's reply (HTTP 400). It depends on the surrounding conversation, so
+ * it is retryable and often clears on a rephrase or a fresh conversation.
+ */
+export type AgentErrorKind =
+  | "content_filter"
+  | "auth"
+  | "rate_limit"
+  | "overloaded"
+  | "invalid_request"
+  | "server"
+  | "network"
+  | "timeout"
+  | "step_limit"
+  | "unknown";
+
+/**
+ * A failure rendered in the chat. Structured (not just a string) so the UI can
+ * show a friendly title + explanation, gate a retry button on {@link retryable},
+ * and tuck the original provider message away in {@link raw} for debugging.
+ */
+export interface AgentError {
+  kind: AgentErrorKind;
+  /** Short, human heading, e.g. "Response blocked by the content filter". */
+  title: string;
+  /** One or two sentences explaining what happened and what to do next. */
+  detail: string;
+  /** Whether a plain re-send has any chance of succeeding. */
+  retryable: boolean;
+  /** The original provider/transport message, for a collapsible detail view. */
+  raw?: string;
+}
+
+/**
  * One rendered line in the agent chat transcript. This is the *display* model
  * (what the UI shows), distinct from {@link Turn} (what the model sees). Both
  * are persisted with a conversation so a reopened chat renders exactly as it
@@ -52,6 +90,8 @@ export interface LLMProvider {
 export interface ChatLine {
   kind: "user" | "assistant" | "command" | "result" | "denied" | "error" | "note";
   text: string;
+  /** Present on `error` lines: the structured failure to render richly. */
+  error?: AgentError;
 }
 
 /** Events emitted by the agent loop for the UI to render. */
@@ -62,7 +102,7 @@ export type AgentEvent =
   | { type: "result"; id: string; result: ExecResult }
   | { type: "done" }
   | { type: "stopped" }
-  | { type: "error"; message: string };
+  | { type: "error"; error: AgentError };
 
 /** The single tool exposed to every provider. */
 export const SHELL_TOOL = {
