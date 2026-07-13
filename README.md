@@ -55,12 +55,7 @@ API keys and the BLE pairing key never leave the phone's OS-level secure store (
 Keystore); murmur has no backend of its own, so the only thing that leaves the phone is the
 LLM calls you make with your own key. See [`app/README.md`](./app/README.md#data--privacy).
 
-## Status
-
-Beta. The daemon and protocol are stress-tested via unit tests on both sides; the app has
-shipped to TestFlight (iOS). Android BLE support is implemented but less exercised in
-practice, and over-the-air JS updates aren't wired up yet (see
-[`app/README.md`](./app/README.md)).
+## Getting started
 
 ### The daemon
 
