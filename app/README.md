@@ -4,6 +4,25 @@
 offers a **Shell** tab (interactive terminal) and an **Agent** tab (LLM drives the shell with
 your own API key).
 
+## Cheat sheet
+
+The three commands you actually run day to day, from `app/`:
+
+```sh
+# Install the dev build onto a plugged-in, unlocked iPhone (native code changed):
+npx expo run:ios --device
+
+# Cut a new production build in the cloud (bumps the build number automatically):
+eas build --platform ios --profile production
+
+# Submit the latest finished build to TestFlight (prompts for App Store Connect auth):
+eas submit --platform ios --latest --profile production
+```
+
+`expo run:ios --device` is for local dev iteration; the two `eas` commands are the release
+flow (build, then submit) — see **Build & publish** below for the full picture, including OTA
+and Android.
+
 ## Source layout
 
 ```
