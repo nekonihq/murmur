@@ -18,7 +18,7 @@ Two halves, one wire protocol:
 
 - **`murmurd`** — a Python daemon on the Pi that exposes a shell over a custom BLE GATT
   service. No compilation needed — just BlueZ and a venv.
-- **murmur app** — a React Native (Expo) app for iOS and Android that connects to the Pi over
+- **`murmur app`** — a React Native (Expo) app for iOS and Android that connects to the Pi over
   BLE and hosts both modes.
 
 The agent loop runs **on the phone**: the phone holds the API key and the internet connection,
