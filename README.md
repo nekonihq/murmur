@@ -73,7 +73,13 @@ cd daemon
 python3 -m unittest discover -s tests -t .   # protocol/auth/flow-control/exec tests (any OS)
 ```
 
-Install on the Pi with a venv (no compilation) — see [`daemon/README.md`](./daemon/README.md).
+On the Pi itself, one command installs everything (deps, non-root user, systemd unit):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nekonihq/murmur/main/daemon/install.sh | bash
+```
+
+See [`daemon/README.md`](./daemon/README.md) for what it does and the manual step-by-step.
 
 ### App
 

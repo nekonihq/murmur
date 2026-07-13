@@ -51,6 +51,20 @@ Commit `uv.lock`.
 
 ## Install on a Raspberry Pi
 
+**Quick install** — one command does the apt deps, the non-root `murmur` user, `uv sync`,
+and the systemd unit (installed but not enabled/started, so you review before it runs):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nekonihq/murmur/main/daemon/install.sh | bash
+```
+
+It's [`install.sh`](./install.sh) in this directory — read it before piping it into `bash` on
+a box you care about, same as any installer script. Safe to re-run (it updates the checkout
+and re-syncs deps). Needs apt + systemd (Raspberry Pi OS, Debian, Ubuntu, Kali); on anything
+else, or if you'd rather see each step, follow the manual install below.
+
+### Manual install
+
 System prerequisites either way:
 
 ```sh
