@@ -72,9 +72,9 @@ export function SettingsScreen({ onChanged }: Props) {
       setApiKey(stored?.apiKey ?? "");
       setModel(stored?.model ?? "");
       setSystemPrompt((await loadSystemPrompt()) ?? "");
-      setSudoPassword((await loadSudoPassword()) ?? "");
+      setSudoPassword((deviceId && (await loadSudoPassword(deviceId))) || "");
     })();
-  }, []);
+  }, [deviceId]);
 
   async function pick(id: ProviderId) {
     setSelected(id);
@@ -91,7 +91,7 @@ export function SettingsScreen({ onChanged }: Props) {
     });
     await saveSelectedProvider(selected);
     await saveSystemPrompt(systemPrompt);
-    await saveSudoPassword(sudoPassword);
+    if (deviceId) await saveSudoPassword(deviceId, sudoPassword);
     setSaved(true);
     onChanged?.();
   }

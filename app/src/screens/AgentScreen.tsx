@@ -36,11 +36,12 @@ import { Markdown } from "../agent/Markdown.tsx";
 interface Props {
   client: MurmurClient;
   provider: LLMProvider | null;
+  deviceId: string;
 }
 
 const USES_SUDO = /\bsudo\b/;
 
-export function AgentScreen({ client, provider }: Props) {
+export function AgentScreen({ client, provider, deviceId }: Props) {
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
@@ -146,7 +147,7 @@ export function AgentScreen({ client, provider }: Props) {
     // Read prompt + sudo password fresh each run so edits in Settings take
     // effect without remounting; undefined prompt falls back to the default.
     const systemPrompt = (await loadSystemPrompt()) ?? undefined;
-    const sudoPassword = (await loadSudoPassword()) ?? undefined;
+    const sudoPassword = (await loadSudoPassword(deviceId)) ?? undefined;
     const controller = new AbortController();
     abortRef.current = controller;
     // Only attach the password to commands that actually invoke sudo, to keep

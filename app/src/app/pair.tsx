@@ -2,7 +2,7 @@
 // and connect.
 
 import React, { useMemo, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { useConnection } from "../ConnectionContext.tsx";
@@ -17,11 +17,13 @@ export default function PairRoute() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [psk, setPsk] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function pair() {
     const trimmed = psk.trim();
-    if (!trimmed || !deviceId) return;
+    if (!trimmed || !deviceId || busy) return;
+    setBusy(true);
     setError(null);
     try {
       await savePsk(deviceId, trimmed);
@@ -32,6 +34,7 @@ export default function PairRoute() {
       router.replace("/(tabs)/shell");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
     }
   }
 
@@ -48,11 +51,20 @@ export default function PairRoute() {
         placeholderTextColor={colors.textMid}
         autoCapitalize="none"
         autoCorrect={false}
+        editable={!busy}
         style={styles.input}
       />
       {error && <Text style={styles.error}>{error}</Text>}
-      <TouchableOpacity style={styles.button} onPress={pair}>
-        <Text style={styles.buttonText}>Pair & connect</Text>
+      <TouchableOpacity
+        style={[styles.button, busy && styles.buttonDisabled]}
+        onPress={pair}
+        disabled={busy}
+      >
+        {busy ? (
+          <ActivityIndicator color={colors.accentText} />
+        ) : (
+          <Text style={styles.buttonText}>Pair & connect</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -73,6 +85,7 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.surface,
     },
     button: { backgroundColor: colors.accent, padding: 12, borderRadius: 8 },
+    buttonDisabled: { opacity: 0.6 },
     buttonText: { color: colors.accentText, textAlign: "center" },
     error: { color: colors.danger },
   });

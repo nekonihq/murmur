@@ -25,6 +25,13 @@ The agent loop runs **on the phone**: the phone holds the API key and the intern
 calls the LLM, and ships the resulting commands to the Pi over BLE. The Pi only ever needs
 Bluetooth.
 
+## Demo
+
+[Murmur Demo — Pairing, Shell, and AI Agent on a Raspberry Pi over Bluetooth](https://youtu.be/kzYSdF1omzY)
+
+Pairing with a nearby Pi over BLE, an interactive shell, configuring a bring-your-own LLM API
+key, driving the Pi with Agent mode, and wiping all stored data from the phone.
+
 ## Why BLE (and not Bluetooth Classic)
 
 iOS forbids Bluetooth Classic / RFCOMM (the classic "serial port" profile) for apps outside

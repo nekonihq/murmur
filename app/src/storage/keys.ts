@@ -64,9 +64,10 @@ export async function rememberDevice(id: string, name: string): Promise<void> {
   await SecureStore.setItemAsync(PAIRED_KEY, JSON.stringify(rest));
 }
 
-/** Forget a single device: drop its PSK and remove it from the index. */
+/** Forget a single device: drop its PSK and sudo password, and remove it from the index. */
 export async function forgetDevice(id: string): Promise<void> {
   await SecureStore.deleteItemAsync(pskKey(id));
+  await SecureStore.deleteItemAsync(sudoPasswordKey(id));
   const rest = (await loadPairedDevices()).filter((d) => d.id !== id);
   await SecureStore.setItemAsync(PAIRED_KEY, JSON.stringify(rest));
 }
@@ -134,19 +135,21 @@ export async function loadSystemPrompt(): Promise<string | null> {
   return SecureStore.getItemAsync(SYSTEM_PROMPT_KEY);
 }
 
-// ---- sudo password ------------------------------------------------------
+// ---- sudo password --------------------------------------------------------
 // Used in agent mode: sent over the encrypted link only when a command uses
 // sudo, so the daemon can answer sudo's password prompt via an askpass helper.
+// Per-device, like the PSK — it's that Pi's root password, not a phone-wide
+// setting, and different paired Pis can have different root passwords.
 
-const SUDO_PASSWORD_KEY = "murmur.sudoPassword";
+const sudoPasswordKey = (deviceId: string) => `murmur.sudoPassword.${sanitize(deviceId)}`;
 
-export async function saveSudoPassword(password: string): Promise<void> {
-  if (password) await SecureStore.setItemAsync(SUDO_PASSWORD_KEY, password);
-  else await SecureStore.deleteItemAsync(SUDO_PASSWORD_KEY);
+export async function saveSudoPassword(deviceId: string, password: string): Promise<void> {
+  if (password) await SecureStore.setItemAsync(sudoPasswordKey(deviceId), password);
+  else await SecureStore.deleteItemAsync(sudoPasswordKey(deviceId));
 }
 
-export async function loadSudoPassword(): Promise<string | null> {
-  return SecureStore.getItemAsync(SUDO_PASSWORD_KEY);
+export async function loadSudoPassword(deviceId: string): Promise<string | null> {
+  return SecureStore.getItemAsync(sudoPasswordKey(deviceId));
 }
 
 // ---- Wipe everything ----------------------------------------------------
@@ -160,11 +163,11 @@ export async function deleteAllData(): Promise<void> {
   const devices = await loadPairedDevices();
   await Promise.all([
     ...devices.map((d) => SecureStore.deleteItemAsync(pskKey(d.id))),
+    ...devices.map((d) => SecureStore.deleteItemAsync(sudoPasswordKey(d.id))),
     ...PROVIDER_IDS.map((id) => SecureStore.deleteItemAsync(providerKey(id))),
     SecureStore.deleteItemAsync(PAIRED_KEY),
     SecureStore.deleteItemAsync(SELECTED_KEY),
     SecureStore.deleteItemAsync(SYSTEM_PROMPT_KEY),
-    SecureStore.deleteItemAsync(SUDO_PASSWORD_KEY),
     SecureStore.deleteItemAsync(THEME_KEY),
   ]);
   await deleteAllConversations();
