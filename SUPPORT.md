@@ -6,7 +6,7 @@ Murmur is a BLE shell/agent client for headless Raspberry Pi devices, developed 
 
 - **Report a bug or request a feature:** open an issue at
   [github.com/nekonihq/murmur/issues](https://github.com/nekonihq/murmur/issues).
-- **Email support:** malykhin1988@gmail.com
+- **Email support:** denys@malykhin.dev
 
 ## Frequently asked questions
 
@@ -29,4 +29,4 @@ one-line install script and manual setup steps.
 
 ## Contact
 
-For anything not covered above, email **malykhin1988@gmail.com** and we'll get back to you.
+For anything not covered above, email **denys@malykhin.dev** and we'll get back to you.
