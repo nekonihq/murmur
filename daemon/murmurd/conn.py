@@ -68,14 +68,7 @@ class AuthHandler:
             self._authenticated = True
             return self._frame(Opcode.AUTH_OK, {})
         self._failed = True
-        expected = auth.encode_b64(auth.compute_mac(self._psk, self._nonce))
-        log.warning(
-            "auth failed: bad MAC (psk_len=%d nonce=%s got_mac=%r expected_mac=%s)",
-            len(self._psk),
-            auth.encode_b64(self._nonce),
-            mac,
-            expected,
-        )
+        log.warning("auth failed: bad MAC")
         return self._frame(Opcode.AUTH_FAIL, {"reason": "bad mac"})
 
     def _frame(self, opcode: Opcode, value: dict) -> list[Frame]:
