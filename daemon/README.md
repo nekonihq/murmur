@@ -99,6 +99,24 @@ python3 -m venv .venv
 Either way you end up with `.venv/bin/murmurd`. For a hardened service, see
 [`../docs/murmurd.service`](../docs/murmurd.service).
 
+> **Careful mixing this with the systemd service.** The commands above pair under
+> `~/.config/murmur` — i.e. whatever user you happen to be logged in as. The systemd unit
+> instead runs as a dedicated `murmur` user with a hardcoded `--config-dir
+> /home/murmur/.config/murmur`. Those are two different files with two different keys. If you
+> pair manually as yourself and then start (or already run) the service, the app ends up
+> holding a key the running daemon never sees, and every connection fails with `auth failed:
+> bad MAC` no matter how many times you re-pair or restart — because you're re-pairing the
+> wrong file. If you're installing the service, pair as the `murmur` user into its exact config
+> dir instead:
+>
+> ```sh
+> sudo -u murmur /opt/murmur/daemon/.venv/bin/murmurd \
+>      --config-dir /home/murmur/.config/murmur --pair
+> ```
+>
+> The PSK the daemon uses is also fixed at process startup — it isn't re-read from disk while
+> running, so `sudo systemctl restart murmurd` after (re-)pairing.
+
 > Note: `uv` does not avoid the `dbus-fast` source compile on 32-bit boards — that's about
 > prebuilt-wheel availability, not the installer. See the low-RAM section below.
 
