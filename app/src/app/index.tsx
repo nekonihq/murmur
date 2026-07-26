@@ -161,7 +161,11 @@ export default function DevicesRoute() {
                           <Text style={styles.name}>{p.name}</Text>
                           <Text style={styles.id}>{p.id}</Text>
                         </View>
-                        {!inRange && <Text style={styles.dim}>not in range</Text>}
+                        {!inRange && (
+                          <View style={styles.pill}>
+                            <Text style={styles.pillText}>not in range</Text>
+                          </View>
+                        )}
                       </View>
                     </TouchableOpacity>
                   );
@@ -169,7 +173,11 @@ export default function DevicesRoute() {
                 <Text style={styles.scanHint}>Long-press a paired device to forget it.</Text>
               </>
             )}
-            <Text style={styles.listHeader}>Nearby devices</Text>
+            {nearbyDevices.length > 0 && (
+              <Text style={[styles.listHeader, paired.length > 0 && styles.nearbyHeader]}>
+                Nearby devices
+              </Text>
+            )}
           </>
         }
         ListFooterComponent={
@@ -204,7 +212,15 @@ const createStyles = (colors: ThemeColors) =>
     name: { fontSize: 16, color: colors.textHigh },
     id: { fontSize: 12, color: colors.textMid },
     dim: { color: colors.textMid },
-    listHeader: { color: colors.textMid, fontSize: 13, fontWeight: "600", marginBottom: 4 },
+    pill: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 999,
+      paddingVertical: 3,
+      paddingHorizontal: 10,
+    },
+    pillText: { color: colors.textMid, fontSize: 12, fontWeight: "500" },
+    listHeader: { color: colors.textMid, fontSize: 13, fontWeight: "600", marginBottom: 8 },
+    nearbyHeader: { marginTop: 20 },
     scanTitle: { color: colors.textHigh, fontSize: 17, fontWeight: "600", marginTop: 16 },
     scanHint: { color: colors.textMid, fontSize: 14, textAlign: "center", marginTop: 8, lineHeight: 20 },
     scanFooter: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", paddingVertical: 20 },
