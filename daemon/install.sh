@@ -60,16 +60,22 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 $SUDO usermod -aG bluetooth "$SERVICE_USER"
 
+# Git ops run as $SERVICE_USER (not root) so ownership of $INSTALL_DIR stays
+# consistent across runs — git refuses to operate on a repo owned by a
+# different user ("detected dubious ownership"), which would break the
+# update path on every run after the first.
 if [[ -d "${INSTALL_DIR}/.git" ]]; then
   log "Updating existing checkout at ${INSTALL_DIR}..."
-  $SUDO git -C "$INSTALL_DIR" fetch --depth 1 origin "$REPO_REF"
-  $SUDO git -C "$INSTALL_DIR" checkout "$REPO_REF"
-  $SUDO git -C "$INSTALL_DIR" reset --hard "origin/${REPO_REF}"
+  $SUDO chown -R "${SERVICE_USER}:${SERVICE_USER}" "$INSTALL_DIR"
+  $SUDO -u "$SERVICE_USER" git -C "$INSTALL_DIR" fetch --depth 1 origin "$REPO_REF"
+  $SUDO -u "$SERVICE_USER" git -C "$INSTALL_DIR" checkout "$REPO_REF"
+  $SUDO -u "$SERVICE_USER" git -C "$INSTALL_DIR" reset --hard "origin/${REPO_REF}"
 else
   log "Cloning murmur into ${INSTALL_DIR}..."
-  $SUDO git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$INSTALL_DIR"
+  $SUDO mkdir -p "$INSTALL_DIR"
+  $SUDO chown "${SERVICE_USER}:${SERVICE_USER}" "$INSTALL_DIR"
+  $SUDO -u "$SERVICE_USER" git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$INSTALL_DIR"
 fi
-$SUDO chown -R "${SERVICE_USER}:${SERVICE_USER}" "$INSTALL_DIR"
 
 UV_BIN="/home/${SERVICE_USER}/.local/bin/uv"
 if [[ ! -x "$UV_BIN" ]]; then

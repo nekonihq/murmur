@@ -19,7 +19,7 @@ Two halves, one wire protocol:
 - **`murmurd`** — a Python daemon on the Pi that exposes a shell over a custom BLE GATT
   service. No compilation needed — just BlueZ and a venv.
 - **`murmur app`** — a React Native (Expo) app for iOS and Android that connects to the Pi over
-  BLE and hosts both modes.
+  BLE and hosts both modes. [Get it on the App Store](https://apps.apple.com/us/app/murmur-ble-shell/id6788609558).
 
 The agent loop runs **on the phone**: the phone holds the API key and the internet connection,
 calls the LLM, and ships the resulting commands to the Pi over BLE. The Pi only ever needs
@@ -84,6 +84,8 @@ curl -fsSL https://raw.githubusercontent.com/nekonihq/murmur/main/daemon/install
 See [`daemon/README.md`](./daemon/README.md) for what it does and the manual step-by-step.
 
 ### App
+
+**iOS**: [murmur — BLE shell on the App Store](https://apps.apple.com/us/app/murmur-ble-shell/id6788609558)
 
 ```sh
 cd app
