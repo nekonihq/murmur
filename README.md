@@ -96,6 +96,13 @@ pnpm test           # protocol mirror round-trip tests (node --test)
 See [`app/README.md`](./app/README.md) for running the app on a physical iPhone and building
 with EAS.
 
+## Community
+
+Contributions welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). This project follows a
+[Code of Conduct](./CODE_OF_CONDUCT.md). Found a security issue? See
+[`SECURITY.md`](./SECURITY.md) for how to report it privately. General help and FAQs live in
+[`SUPPORT.md`](./SUPPORT.md).
+
 ## License
 
 [MIT](./LICENSE)

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/nekonihq/murmur/security/advisories/new
+    about: Please report security vulnerabilities privately — see SECURITY.md — not as a public issue.
+  - name: Support / questions
+    url: https://github.com/nekonihq/murmur/blob/main/SUPPORT.md
+    about: General questions and troubleshooting help.
