@@ -18,7 +18,7 @@ const SELECTED_KEY = "murmur.selectedProvider";
 
 // Concrete provider ids, kept in sync with providers/index.ts. Used to wipe
 // every stored key on "delete all data" (SecureStore has no key enumeration).
-const PROVIDER_IDS: ProviderId[] = ["anthropic", "openai", "gemini"];
+const PROVIDER_IDS: ProviderId[] = ["anthropic", "openai", "gemini", "openrouter"];
 
 // ---- BLE pre-shared key (paired once per Pi) ----------------------------
 

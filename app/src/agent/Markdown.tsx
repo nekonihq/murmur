@@ -2,9 +2,9 @@
 // themed via the active palette. Used for assistant messages in the agent chat.
 
 import React, { useMemo } from "react";
-import { View, Text } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 
-import { parseBlocks, parseInline, type Span } from "./markdown.ts";
+import { parseBlocks, parseInline, type Span, type Align } from "./markdown.ts";
 import type { ThemeColors } from "../theme.ts";
 
 interface Props {
@@ -53,8 +53,98 @@ export function Markdown({ text, color, colors }: Props) {
                 <InlineText spans={parseInline(b.text)} color={color} colors={colors} />
               </Text>
             );
+          case "table":
+            return <Table key={i} header={b.header} aligns={b.aligns} rows={b.rows} color={color} colors={colors} />;
         }
       })}
+    </View>
+  );
+}
+
+// Renders wide relative to the chat bubble, so it scrolls horizontally within
+// its own bordered frame rather than squeezing columns unreadably narrow or
+// blowing out the bubble width on a phone screen.
+function Table({
+  header,
+  aligns,
+  rows,
+  color,
+  colors,
+}: {
+  header: string[];
+  aligns: Align[];
+  rows: string[][];
+  color: string;
+  colors: ThemeColors;
+}) {
+  const cols = Math.max(header.length, ...rows.map((r) => r.length));
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 8,
+        marginVertical: 4,
+        overflow: "hidden",
+      }}
+    >
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View>
+          <View style={{ flexDirection: "row", backgroundColor: colors.surfaceAlt }}>
+            {Array.from({ length: cols }, (_, c) => (
+              <TableCell key={c} text={header[c] ?? ""} align={aligns[c]} color={color} colors={colors} header last={c === cols - 1} />
+            ))}
+          </View>
+          {rows.map((r, ri) => (
+            <View
+              key={ri}
+              style={{
+                flexDirection: "row",
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+                backgroundColor: ri % 2 ? colors.surface : "transparent",
+              }}
+            >
+              {Array.from({ length: cols }, (_, c) => (
+                <TableCell key={c} text={r[c] ?? ""} align={aligns[c]} color={color} colors={colors} last={c === cols - 1} />
+              ))}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function TableCell({
+  text,
+  align,
+  color,
+  colors,
+  header,
+  last,
+}: {
+  text: string;
+  align?: Align;
+  color: string;
+  colors: ThemeColors;
+  header?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        minWidth: 90,
+        maxWidth: 240,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRightWidth: last ? 0 : 1,
+        borderRightColor: colors.border,
+      }}
+    >
+      <Text style={{ color, fontWeight: header ? "700" : "400", textAlign: align ?? "left" }}>
+        <InlineText spans={parseInline(text)} color={color} colors={colors} />
+      </Text>
     </View>
   );
 }

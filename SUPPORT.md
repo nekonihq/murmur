@@ -21,7 +21,7 @@ you make with your own API key when using Agent mode. See the
 [Privacy Policy](https://github.com/nekonihq/murmur/blob/main/PRIVACY.md) for details.
 
 **Which LLM providers are supported?**
-Anthropic Claude, OpenAI, and Google Gemini, using your own API key entered in the app.
+Anthropic Claude, OpenAI, Google Gemini, and OpenRouter, using your own API key entered in the app.
 
 **How do I install the daemon on my Pi?**
 See the [daemon README](https://github.com/nekonihq/murmur/blob/main/daemon/README.md) for the

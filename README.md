@@ -8,10 +8,11 @@ on the Pi for you, showing every command and its output as it goes. It also doub
 plain remote terminal when you'd rather drive the shell yourself. Either way, the Pi never
 needs internet — it can be fully offline.
 
-- **Agent mode** — a chat UI where an LLM (your choice of Anthropic Claude, OpenAI, or Google
-  Gemini, using **your own API key**) reasons about your goal and drives the shell for you,
-  one command at a time. Every command and result is shown inline so you can follow — and stop
-  — at any point. Conversations are saved on the phone so you can resume past sessions.
+- **Agent mode** — a chat UI where an LLM (your choice of Anthropic Claude, OpenAI, Google
+  Gemini, or OpenRouter, using **your own API key**) reasons about your goal and drives the
+  shell for you, one command at a time. Every command and result is shown inline so you can
+  follow — and stop — at any point. Conversations are saved on the phone so you can resume past
+  sessions.
 - **Shell mode** — a real interactive terminal (xterm.js), for when you just want to type.
 
 Two halves, one wire protocol:

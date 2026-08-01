@@ -2,7 +2,7 @@
   "expo": {
     "name": "murmur",
     "slug": "murmur",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "scheme": "murmur",
     "userInterfaceStyle": "automatic",
@@ -28,7 +28,7 @@
         "android.permission.BLUETOOTH_ADMIN"
       ]
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.1.0",
     "plugins": [
       "expo-router",
       "expo-secure-store",
@@ -36,9 +36,7 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": [
-            "central"
-          ],
+          "modes": ["central"],
           "bluetoothAlwaysPermission": "murmur uses Bluetooth to connect to your Raspberry Pi."
         }
       ]

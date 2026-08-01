@@ -61,3 +61,34 @@ test("bold and italic", () => {
 test("plain text passes through as a single span", () => {
   assert.deepEqual(parseInline("nothing special"), [{ text: "nothing special" }]);
 });
+
+test("GFM table with alignment row", () => {
+  const md = ["| Name | Count | Note |", "| :--- | :---: | ---: |", "| a | 1 | x |", "| b | 2 | y |"].join("\n");
+  assert.deepEqual(parseBlocks(md), [
+    {
+      type: "table",
+      header: ["Name", "Count", "Note"],
+      aligns: ["left", "center", "right"],
+      rows: [
+        ["a", "1", "x"],
+        ["b", "2", "y"],
+      ],
+    },
+  ]);
+});
+
+test("table cells support escaped pipes and inline formatting", () => {
+  const md = ["| A | B |", "| --- | --- |", "| **bold** | a \\| b |"].join("\n");
+  assert.deepEqual(parseBlocks(md), [
+    {
+      type: "table",
+      header: ["A", "B"],
+      aligns: ["left", "left"],
+      rows: [["**bold**", "a | b"]],
+    },
+  ]);
+});
+
+test("a bare pipe-containing line without a delimiter row is a paragraph", () => {
+  assert.deepEqual(parseBlocks("a | b\nnot a table"), [{ type: "paragraph", text: "a | b not a table" }]);
+});
