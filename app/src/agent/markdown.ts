@@ -6,12 +6,15 @@
 // Pure functions only (no React) so the parsing is unit-testable; the renderer
 // lives in Markdown.tsx.
 
+export type Align = "left" | "center" | "right";
+
 export type Block =
   | { type: "code"; text: string }
   | { type: "heading"; level: number; text: string }
   | { type: "bullet"; text: string }
   | { type: "ordered"; marker: string; text: string }
-  | { type: "paragraph"; text: string };
+  | { type: "paragraph"; text: string }
+  | { type: "table"; header: string[]; aligns: Align[]; rows: string[][] };
 
 export interface Span {
   text: string;
@@ -48,6 +51,21 @@ export function parseBlocks(md: string): Block[] {
       continue;
     }
 
+    if (line.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      flushPara();
+      const header = splitRow(line);
+      const aligns = splitRow(lines[i + 1]).map(parseAlign);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+        rows.push(splitRow(lines[i]));
+        i++;
+      }
+      i--; // outer loop's i++ accounts for the row just past the table
+      blocks.push({ type: "table", header, aligns, rows });
+      continue;
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       flushPara();
@@ -78,6 +96,38 @@ export function parseBlocks(md: string): Block[] {
   }
   flushPara();
   return blocks;
+}
+
+/** True for a GFM table delimiter row, e.g. `| --- | :---: | ---: |`. */
+function isTableSeparator(line: string): boolean {
+  return /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(line);
+}
+
+/** Split a table row on unescaped `|`, trimming cells and dropping outer pipes. */
+function splitRow(line: string): string[] {
+  const stripped = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let cur = "";
+  for (let i = 0; i < stripped.length; i++) {
+    if (stripped[i] === "\\" && stripped[i + 1] === "|") {
+      cur += "|";
+      i++;
+    } else if (stripped[i] === "|") {
+      cells.push(cur.trim());
+      cur = "";
+    } else {
+      cur += stripped[i];
+    }
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function parseAlign(sep: string): Align {
+  const s = sep.trim();
+  if (s.startsWith(":") && s.endsWith(":")) return "center";
+  if (s.endsWith(":")) return "right";
+  return "left";
 }
 
 /** Parse inline formatting within a single block of text into styled spans. */

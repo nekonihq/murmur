@@ -41,7 +41,7 @@ src/
   client.ts     connection + auth handshake + sessions + flow-control credits
   agent/        provider-agnostic agent loop (loop.ts) + types + Markdown rendering
                 (Markdown.tsx) + saved-chat history UI (History.tsx)
-  providers/    Anthropic (default), OpenAI, Gemini adapters + shared error handling (common.ts)
+  providers/    Anthropic (default), OpenAI, Gemini, OpenRouter adapters + shared error handling (common.ts)
   storage/      expo-secure-store for the BLE PSK + BYO API keys;
                 expo-file-system for persisted agent conversations (conversations.ts)
   terminal/     xterm.js-in-WebView terminal

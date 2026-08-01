@@ -4,7 +4,7 @@ import type { ExecResult } from "../protocol/messages.ts";
 import type { AgentError } from "../agent/types.ts";
 
 /** Provider identifiers persisted in settings. */
-export type ProviderId = "anthropic" | "openai" | "gemini";
+export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter";
 
 export interface ProviderConfig {
   apiKey: string;
@@ -21,6 +21,7 @@ export const DEFAULT_MODELS: Record<ProviderId, string> = {
   anthropic: "claude-opus-4-8",
   openai: "gpt-4o",
   gemini: "gemini-2.0-flash",
+  openrouter: "qwen/qwen3.7-max",
 };
 
 /**

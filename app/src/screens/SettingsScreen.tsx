@@ -40,7 +40,7 @@ import { useConnection } from "../ConnectionContext.tsx";
 import { useTheme } from "../ThemeContext.tsx";
 import type { ThemeColors, ThemeMode } from "../theme.ts";
 
-const PROVIDERS: ProviderId[] = ["anthropic", "openai", "gemini"];
+const PROVIDERS: ProviderId[] = ["anthropic", "openai", "gemini", "openrouter"];
 const THEME_MODES: { id: ThemeMode; label: string }[] = [
   { id: "system", label: "System" },
   { id: "light", label: "Light" },
