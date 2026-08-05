@@ -28,7 +28,9 @@ Bluetooth.
 
 ## Demo
 
-[Murmur Demo — Pairing, Shell, and AI Agent on a Raspberry Pi over Bluetooth](https://youtu.be/kzYSdF1omzY)
+![Murmur Demo — Pairing, Shell, and AI Agent on a Raspberry Pi over Bluetooth](assets/demo.gif)
+
+[Watch on YouTube](https://youtu.be/kzYSdF1omzY)
 
 Pairing with a nearby Pi over BLE, an interactive shell, configuring a bring-your-own LLM API
 key, driving the Pi with Agent mode, and wiping all stored data from the phone.
