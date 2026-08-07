@@ -47,6 +47,13 @@ const CREDIT_REFILL_AT = 16;
  */
 const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
 
+/**
+ * Extra time allowed on top of the exec's own timeout before the client gives
+ * up waiting for a result, covering the BLE round trip and any queuing delay
+ * rather than racing the daemon's own deadline exactly.
+ */
+const EXEC_TIMEOUT_SLACK_MS = 15_000;
+
 const PROTO_VERSION = 1;
 
 /** Fail the connect attempt if the handshake doesn't complete in time. */
@@ -235,6 +242,7 @@ export class MurmurClient {
       await this.openSession(EXEC_SESSION, "exec", 0, 0);
       this.execSessionReady = true;
     }
+    const effectiveTimeoutMs = timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
     const result = new Promise<ExecResult>((resolve, reject) => {
       this.execPending.set(EXEC_SESSION, { resolve, reject });
     });
@@ -257,12 +265,34 @@ export class MurmurClient {
     signal?.addEventListener("abort", onAbort, { once: true });
     const payload = jsonPayload({
       cmd: command,
-      timeout_ms: timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS,
+      timeout_ms: effectiveTimeoutMs,
       ...(sudoPassword ? { sudo_password: sudoPassword } : {}),
     });
     try {
       await this.sendC2p(Opcode.Exec, EXEC_SESSION, payload);
-      return await result;
+      // Backstop: the daemon enforces `timeout_ms` and always replies, but BLE
+      // notifications aren't guaranteed delivery — a dropped fragment carrying
+      // the result would otherwise leave this promise (and the agent loop)
+      // hanging forever with no error and no recovery. Give the round trip
+      // some slack over the daemon's own deadline before giving up.
+      return await withTimeout(
+        result,
+        effectiveTimeoutMs + EXEC_TIMEOUT_SLACK_MS,
+        "no response from the Pi — the command result never arrived (lost connection?)",
+      );
+    } catch (e) {
+      // A timed-out exec's late result could otherwise land on the next
+      // request, so drop the session and force a reopen (same recovery as an
+      // aborted exec above).
+      if (this.execPending.delete(EXEC_SESSION)) {
+        this.execSessionReady = false;
+        this.sendC2p(
+          Opcode.CloseSession,
+          EXEC_SESSION,
+          jsonPayload({ session_id: EXEC_SESSION }),
+        ).catch(swallow);
+      }
+      throw e;
     } finally {
       signal?.removeEventListener("abort", onAbort);
     }
