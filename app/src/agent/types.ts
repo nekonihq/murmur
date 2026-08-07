@@ -88,6 +88,16 @@ export interface AgentError {
  * did and can still be resumed with full model context.
  */
 export interface ChatLine {
+  /**
+   * Stable identity for this line, used as the React key when rendering the
+   * chat. Lines can be spliced out of the middle of the array (an error
+   * rollback drops the second-to-last line, not just the last), so the array
+   * index isn't a safe key — reusing an index across a splice reassigns an
+   * existing rendered instance to different content, which can leave stale
+   * native layout behind it. Optional only because conversations saved before
+   * this field existed don't have one; those are backfilled on load.
+   */
+  id?: string;
   kind: "user" | "assistant" | "command" | "result" | "denied" | "error" | "note";
   text: string;
   /** Present on `error` lines: the structured failure to render richly. */

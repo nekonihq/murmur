@@ -13,9 +13,11 @@ import {
   Platform,
   Animated,
   Easing,
+  useWindowDimensions,
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 
 import { MurmurClient } from "../client.ts";
 import { runAgent } from "../agent/loop.ts";
@@ -64,10 +66,21 @@ export function AgentScreen({ client, provider, deviceId }: Props) {
   const lastGoalRef = useRef<string>("");
   const { colors } = useTheme();
   const headerHeight = useHeaderHeight();
+  // An explicit pixel value rather than a maxWidth: "85%" percentage — no
+  // functional difference once Markdown.tsx's table stopped needing a
+  // horizontal ScrollView (see its ChatRenderer.table for that fix), but a
+  // fixed number is simpler to reason about than one Yoga has to resolve
+  // against the parent's width at layout time.
+  const { width: windowWidth } = useWindowDimensions();
+  const maxBubbleWidth = Math.floor(windowWidth * 0.85);
 
+  // Assigns a stable id so the list can be keyed by identity rather than
+  // position — a splice elsewhere (see the error-rollback path in runGoal)
+  // shifts every later index, and reusing a position's key across a splice
+  // hands an existing rendered instance to different content.
   const push = (line: ChatLine) =>
     setLines((prev) => {
-      const next = [...prev, line];
+      const next = [...prev, { ...line, id: newConversationId() }];
       linesRef.current = next;
       return next;
     });
@@ -285,8 +298,11 @@ export function AgentScreen({ client, provider, deviceId }: Props) {
     createdAtRef.current = conv.createdAt;
     titleRef.current = conv.title;
     turnsRef.current = conv.turns;
-    linesRef.current = conv.lines;
-    setLines(conv.lines);
+    // Conversations saved before lines carried an id need one backfilled so
+    // every rendered line has a stable key (see push() above).
+    const lines = conv.lines.map((l) => (l.id ? l : { ...l, id: newConversationId() }));
+    linesRef.current = lines;
+    setLines(lines);
     scrollToBottom(false);
   }
 
@@ -362,9 +378,10 @@ export function AgentScreen({ client, provider, deviceId }: Props) {
             l.error?.kind === "content_filter" || l.error?.kind === "invalid_request";
           return (
             <LineView
-              key={i}
+              key={l.id ?? i}
               line={l}
               colors={colors}
+              maxBubbleWidth={maxBubbleWidth}
               onRetry={isLast ? retry : undefined}
               onRemoveLast={
                 isLast && contextBlock && turnsRef.current.length > 0 ? dropLastExchange : undefined
@@ -416,50 +433,100 @@ export function AgentScreen({ client, provider, deviceId }: Props) {
 function LineView({
   line,
   colors,
+  maxBubbleWidth,
   onRetry,
   onRemoveLast,
 }: {
   line: ChatLine;
   colors: ThemeColors;
+  maxBubbleWidth: number;
   onRetry?: () => void;
   onRemoveLast?: () => void;
 }) {
-  switch (line.kind) {
-    case "user":
-      return (
-        <Bubble color={colors.accent} textColor={colors.accentText} align="flex-end" text={line.text} />
-      );
-    case "assistant":
-      return (
-        <View style={{ alignSelf: "flex-start", maxWidth: "85%", marginVertical: 4 }}>
-          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 10 }}>
-            <Markdown text={line.text} color={colors.textHigh} colors={colors} />
-          </View>
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await Clipboard.setStringAsync(line.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+
+  if (line.kind === "assistant") {
+    return (
+      <View style={{ alignSelf: "flex-start", maxWidth: maxBubbleWidth, marginVertical: 4 }}>
+        <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: 12, padding: 10 }}>
+          <Markdown text={line.text} color={colors.textHigh} colors={colors} />
+          <TouchableOpacity onPress={copy} hitSlop={8} style={{ alignSelf: "flex-end", marginTop: 6 }}>
+            <Ionicons name={copied ? "checkmark" : "copy-outline"} size={14} color={colors.textMid} />
+          </TouchableOpacity>
         </View>
-      );
-    case "command":
-      return <Mono prefix="$ " text={line.text} bg={colors.codeBg} fg={colors.term} />;
-    case "result":
-      return <Mono text={line.text} bg={colors.codeBgAlt} fg={colors.codeFg} />;
-    case "denied":
-      return <Mono prefix="denied: " text={line.text} bg={colors.codeBg} fg={colors.warn} />;
-    case "error":
-      return (
-        <ErrorCard
-          error={line.error}
-          fallback={line.text}
-          colors={colors}
-          onRetry={onRetry}
-          onRemoveLast={onRemoveLast}
-        />
-      );
-    case "note":
-      return (
-        <Text style={{ color: colors.textMid, marginVertical: 6, textAlign: "center", fontSize: 13 }}>
-          {line.text}
-        </Text>
-      );
+      </View>
+    );
   }
+
+  const content = (() => {
+    switch (line.kind) {
+      case "user":
+        return (
+          <Bubble
+            color={colors.accent}
+            textColor={colors.accentText}
+            align="flex-end"
+            text={line.text}
+            maxWidth={maxBubbleWidth}
+          />
+        );
+      case "command":
+        return <Mono prefix="$ " text={line.text} bg={colors.codeBg} fg={colors.term} />;
+      case "result":
+        return <Mono text={line.text} bg={colors.codeBgAlt} fg={colors.codeFg} />;
+      case "denied":
+        return <Mono prefix="denied: " text={line.text} bg={colors.codeBg} fg={colors.warn} />;
+      case "error":
+        return (
+          <ErrorCard
+            error={line.error}
+            fallback={line.text}
+            colors={colors}
+            onRetry={onRetry}
+            onRemoveLast={onRemoveLast}
+          />
+        );
+      case "note":
+        return (
+          <Text style={{ color: colors.textMid, marginVertical: 6, textAlign: "center", fontSize: 13 }}>
+            {line.text}
+          </Text>
+        );
+    }
+  })();
+
+  // Long-press any of these bubbles to copy its raw (pre-markdown) text —
+  // none contain a nested scrollable, so there's no gesture conflict here.
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onLongPress={copy}
+      delayLongPress={400}
+      style={{ alignSelf: line.kind === "user" ? "flex-end" : undefined }}
+    >
+      {content}
+      {copied && (
+        <View
+          style={{
+            position: "absolute",
+            top: -20,
+            alignSelf: "center",
+            backgroundColor: colors.textHigh,
+            borderRadius: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 2,
+          }}
+        >
+          <Text style={{ color: colors.bg, fontSize: 11, fontWeight: "600" }}>Copied</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 }
 
 const ERROR_ICONS: Record<AgentError["kind"], keyof typeof Ionicons.glyphMap> = {
@@ -675,9 +742,15 @@ function Pill({
   );
 }
 
-function Bubble(props: { color: string; textColor: string; align: "flex-start" | "flex-end"; text: string }) {
+function Bubble(props: {
+  color: string;
+  textColor: string;
+  align: "flex-start" | "flex-end";
+  text: string;
+  maxWidth: number;
+}) {
   return (
-    <View style={{ alignSelf: props.align, maxWidth: "85%", marginVertical: 4 }}>
+    <View style={{ alignSelf: props.align, maxWidth: props.maxWidth, marginVertical: 4 }}>
       <View style={{ backgroundColor: props.color, borderRadius: 12, padding: 10 }}>
         <Text style={{ color: props.textColor }}>{props.text}</Text>
       </View>
