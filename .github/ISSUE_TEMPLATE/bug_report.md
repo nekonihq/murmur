@@ -9,7 +9,7 @@ assignees: ""
 ## Component
 
 <!-- Which side is this about? -->
-- [ ] App (iOS/Android)
+- [ ] App (iOS)
 - [ ] Daemon (`murmurd` on the Pi)
 - [ ] Protocol / other
 

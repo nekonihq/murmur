@@ -8,7 +8,7 @@ assignees: ""
 
 ## Component
 
-- [ ] App (iOS/Android)
+- [ ] App (iOS)
 - [ ] Daemon (`murmurd` on the Pi)
 - [ ] Protocol / other
 
