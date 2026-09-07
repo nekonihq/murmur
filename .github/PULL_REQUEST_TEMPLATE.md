@@ -4,7 +4,7 @@
 
 ## Component
 
-- [ ] App (iOS/Android)
+- [ ] App (iOS)
 - [ ] Daemon (`murmurd` on the Pi)
 - [ ] Protocol (`PROTOCOL.md` + both mirrors)
 - [ ] Docs only

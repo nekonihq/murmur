@@ -4,7 +4,7 @@
 
 ```
 daemon/        Python daemon (murmurd) — runs on the Pi
-app/           React Native / Expo app (iOS + Android)
+app/           React Native / Expo app (iOS)
 docs/          design notes and the sample systemd unit
 PROTOCOL.md    the wire protocol — single source of truth for both sides
 ```
@@ -66,7 +66,7 @@ Changes here get closer scrutiny than everywhere else in the repo.
 
 - Keep the PR focused — one change, one purpose. Don't bundle unrelated cleanup.
 - Explain the *why* in the PR description; the diff already shows the *what*.
-- Note any manual testing you did (which OS/board for daemon changes, which iOS/Android
+- Note any manual testing you did (which OS/board for daemon changes, which iOS
   version for app changes) since CI can't exercise real BLE hardware.
 
 ## License

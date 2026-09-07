@@ -20,8 +20,7 @@ eas submit --platform ios --latest --profile production
 ```
 
 `expo run:ios --device` is for local dev iteration; the two `eas` commands are the release
-flow (build, then submit) — see **Build & publish** below for the full picture, including OTA
-and Android.
+flow (build, then submit) — see **Build & publish** below for the full picture, including OTA.
 
 ## Source layout
 
@@ -117,8 +116,8 @@ string). Then point it at a running `murmurd` — see **Pairing** below.
 
 ## Build & publish (Expo + EAS)
 
-Uses Expo's managed config with continuous native generation — there are no checked-in
-`ios/`/`android/` folders; `expo prebuild` generates them. BLE needs a **dev build** (not
+Uses Expo's managed config with continuous native generation — there is no checked-in
+`ios/` folder; `expo prebuild` generates it. BLE needs a **dev build** (not
 Expo Go), because `react-native-ble-plx` is a custom native module.
 
 ```sh
@@ -130,12 +129,12 @@ npx eas init
 npx eas update:configure
 
 # Local dev build (creates a custom dev client with BLE compiled in):
-npx expo run:ios                   # or: npx expo run:android
+npx expo run:ios
 npx expo start --dev-client        # then reload JS against the dev build
 
 # Cloud builds & store submission via EAS (profiles in eas.json):
 npx eas build --profile development --platform ios
-npx eas build --profile preview    --platform android
+npx eas build --profile preview    --platform ios
 npx eas build --profile production
 npx eas submit  --profile production
 
@@ -144,8 +143,8 @@ npx eas update --branch production
 ```
 
 BLE permissions are declared in `app.json` (the `react-native-ble-plx` config plugin adds the
-iOS `NSBluetoothAlwaysUsageDescription` and the Android `BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT`
-entries during prebuild) — no manual `Info.plist`/`AndroidManifest.xml` editing.
+iOS `NSBluetoothAlwaysUsageDescription` entry during prebuild) — no manual `Info.plist`
+editing.
 
 > `app.json` now carries `extra.eas.projectId` (added by `eas init`), but still ships without
 > `updates.url` — OTA isn't wired up yet, so JS-only changes currently need a full build. Run
@@ -158,8 +157,8 @@ paste that key once; it's stored in the device keychain and reused on every reco
 
 ## Data & privacy
 
-Everything the app stores stays on the phone: pairing keys and BYO API keys live in the OS
-secure store (iOS Keychain / Android Keystore); saved agent conversations are JSON files in the
+Everything the app stores stays on the phone: pairing keys and BYO API keys live in the
+iOS Keychain; saved agent conversations are JSON files in the
 app's private document directory. Nothing is uploaded except the LLM calls you make with your
 own key. Manage it all from **Settings → Data**:
 
