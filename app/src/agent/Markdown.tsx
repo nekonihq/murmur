@@ -14,10 +14,12 @@
 // ChatRenderer below.
 
 import React, { useMemo, type ReactNode } from "react";
-import { View, Text, type TextStyle } from "react-native";
+import { View, Text, Platform, type TextStyle } from "react-native";
 import { useMarkdown, Renderer, type useMarkdownHookOptions } from "react-native-marked";
 
 import type { ThemeColors } from "../theme.ts";
+
+const MONO_FONT = Platform.select({ ios: "Menlo", default: "monospace" });
 
 interface Props {
   text: string;
@@ -27,7 +29,7 @@ interface Props {
 }
 
 /**
- * Two confirmed bugs in react-native-marked, both overridden here rather than
+ * Confirmed bugs in react-native-marked, overridden here rather than
  * patched (no patch-package set up in this project, and both are cleanly
  * reachable through the public Renderer subclass API):
  *
@@ -68,6 +70,27 @@ class ChatRenderer extends Renderer {
 
   override text(text: string | ReactNode[], styles?: TextStyle): ReactNode {
     return super.text(text, { ...this.baseTextStyle, ...styles });
+  }
+
+  override code(text: string): ReactNode {
+    return (
+      <View
+        key={this.getKey()}
+        style={{ backgroundColor: this.colors.codeBg, borderRadius: 8, padding: 8, marginVertical: 4 }}
+      >
+        <Text
+          style={{
+            fontSize: 13,
+            lineHeight: 18,
+            fontFamily: MONO_FONT,
+            fontStyle: "normal",
+            color: this.colors.codeFg,
+          }}
+        >
+          {text}
+        </Text>
+      </View>
+    );
   }
 
   override table(header: ReactNode[][], rows: ReactNode[][][]): ReactNode {
@@ -139,7 +162,7 @@ export function Markdown({ text, color, colors }: Props) {
       paragraph: { paddingVertical: 2 },
       strong: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
       em: { fontSize: 14, lineHeight: 20 },
-      codespan: { fontSize: 13, fontFamily: "monospace", fontStyle: "normal", color: colors.codeFg },
+      codespan: { fontSize: 13, fontFamily: MONO_FONT, fontStyle: "normal", color: colors.codeFg },
       code: { padding: 8, borderRadius: 8, marginVertical: 4, minWidth: undefined },
       h1: { fontSize: 18, lineHeight: 24, fontWeight: "700", marginVertical: 4, paddingBottom: 0, borderBottomWidth: 0 },
       h2: { fontSize: 18, lineHeight: 24, fontWeight: "700", marginVertical: 4, paddingBottom: 0, borderBottomWidth: 0 },
