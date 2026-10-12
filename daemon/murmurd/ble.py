@@ -21,6 +21,7 @@ from bless import (  # type: ignore
     GATTCharacteristicProperties,
 )
 
+from .agent import enable_bonding
 from .conn import AuthHandler, OutboundPump
 from .protocol import Frame, Opcode, ProtocolError, Reassembler
 from .session import OutEvent, SessionManager
@@ -107,6 +108,19 @@ async def run(psk: bytes, shell: str, adapter: str | None = None) -> None:
 
     await server.start()
     log.info("advertising as '%s' (%s)", LOCAL_NAME, SERVICE_UUID)
+
+    # Let a never-before-seen central bond (Just-Works): BlueZ requires a bonded
+    # link to read a notify characteristic's CCCD, which iOS does on connect.
+    # Without this a fresh phone pairs, is refused, and gets dropped. See agent.py.
+    try:
+        await enable_bonding(server.bus, server.adapter)
+        log.info("adapter pairable; Just-Works bonding agent registered")
+    except Exception:
+        log.warning(
+            "could not enable bonding; centrals that have never paired with this "
+            "adapter may fail to stay connected",
+            exc_info=True,
+        )
 
     def notify(char_uuid: str, frame: Frame) -> None:
         char = server.get_characteristic(char_uuid)
